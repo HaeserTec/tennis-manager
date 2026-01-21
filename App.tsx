@@ -19,6 +19,7 @@ import { DrillLibrary } from '@/components/DrillLibrary';
 import { ClientDashboard } from '@/components/ClientDashboard';
 import { LandingScreen } from '@/components/LandingScreen';
 import { useData } from '@/lib/data-provider';
+import { supabase } from '@/lib/supabase';
 
 // Simple Textarea component
 const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
@@ -124,6 +125,29 @@ export default function App() {
      terms,
      forceSync
   } = useData();
+
+  // Check for existing session
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setCurrentUser({ type: 'coach' });
+        forceSync(); // Trigger sync now that we have a user
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setCurrentUser({ type: 'coach' });
+        forceSync();
+      } else {
+        setCurrentUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [forceSync]);
 
   const [appMode, setAppMode] = useState<AppMode>('standard');
   const [isHome, setIsHome] = useState(true);
@@ -627,7 +651,7 @@ export default function App() {
      return (
         <LandingScreen 
            clients={clients}
-           onCoachLogin={() => setCurrentUser({ type: 'coach' })}
+           onCoachLogin={() => { setCurrentUser({ type: 'coach' }); forceSync(); }}
            onClientLogin={(clientId) => setCurrentUser({ type: 'client', clientId })}
         />
      );
@@ -643,7 +667,7 @@ export default function App() {
               sessions={sessions}
               logs={logs}
               drills={drills}
-              onLogout={() => setCurrentUser(null)}
+              onLogout={() => { supabase.auth.signOut(); setCurrentUser(null); }}
            />
         );
      } else {

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Client } from '@/lib/playbook';
 import { PlaybookDiagramV2 } from '@/components/PlaybookDiagramV2';
+import { supabase } from '@/lib/supabase';
 
 interface LandingScreenProps {
   clients: Client[];
@@ -13,17 +14,31 @@ interface LandingScreenProps {
 
 export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingScreenProps) {
   const [view, setView] = useState<'selection' | 'coach-auth' | 'client-auth'>('selection');
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  const [coachPin, setCoachPin] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleCoachSubmit = (e: React.FormEvent) => {
+  const handleCoachSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (coachPin === '0000') { // Mock PIN for prototype
-       onCoachLogin();
-    } else {
-       setError('Invalid PIN');
-       setCoachPin('');
+    setLoading(true);
+    setError('');
+
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) throw authError;
+
+      if (data.user) {
+         onCoachLogin();
+      }
+    } catch (err: any) {
+      setError(err.message || 'Login failed');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -91,28 +106,40 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
            )}
 
            {view === 'coach-auth' && (
-              <form onSubmit={handleCoachSubmit} className="space-y-6">
+              <form onSubmit={handleCoachSubmit} className="space-y-4">
                  <div className="text-center">
                     <h3 className="text-lg font-bold">Coach Login</h3>
-                    <p className="text-xs text-slate-400 mt-1">Enter your access PIN</p>
+                    <p className="text-xs text-slate-400 mt-1">Enter your credentials</p>
                  </div>
                  
-                 <div className="space-y-2">
-                    <Input 
-                       type="password" 
-                       placeholder="PIN (Try 0000)" 
-                       className="bg-slate-950/50 border-white/10 text-center text-2xl tracking-[0.5em] h-14 font-mono focus-visible:ring-primary placeholder:tracking-normal placeholder:text-sm"
-                       maxLength={4}
-                       value={coachPin}
-                       onChange={(e) => { setCoachPin(e.target.value); setError(''); }}
-                       autoFocus
-                    />
+                 <div className="space-y-3">
+                    <div className="space-y-1">
+                       <Input 
+                          type="email" 
+                          placeholder="Email" 
+                          className="bg-slate-950/50 border-white/10 h-10 font-medium focus-visible:ring-primary"
+                          value={email}
+                          onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                          autoFocus
+                       />
+                    </div>
+                    <div className="space-y-1">
+                       <Input 
+                          type="password" 
+                          placeholder="Password" 
+                          className="bg-slate-950/50 border-white/10 h-10 font-medium focus-visible:ring-primary"
+                          value={password}
+                          onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                       />
+                    </div>
                     {error && <p className="text-center text-red-400 text-xs font-medium animate-in slide-in-from-top-1">{error}</p>}
                  </div>
 
-                 <div className="flex gap-3">
+                 <div className="flex gap-3 pt-2">
                     <Button type="button" variant="ghost" className="flex-1" onClick={() => setView('selection')}>Back</Button>
-                    <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-bold">Enter</Button>
+                    <Button type="submit" disabled={loading} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-bold">
+                        {loading ? '...' : 'Enter'}
+                    </Button>
                  </div>
               </form>
            )}
