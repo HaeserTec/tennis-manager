@@ -13,6 +13,7 @@ interface LandingScreenProps {
 }
 
 export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingScreenProps) {
+  React.useEffect(() => { console.log('LandingScreen: Loaded v2 (Auth)'); }, []);
   const [view, setView] = useState<'selection' | 'coach-auth' | 'client-auth'>('selection');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
