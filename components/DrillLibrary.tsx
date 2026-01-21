@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useDeferredValue } from 'react';
 import { cn, nanoid, downloadTextFile } from '@/lib/utils';
 import type { Drill, DrillCategory, DrillTag, DrillCollection } from '@/lib/playbook';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ type SortOption = 'name' | 'updated' | 'created' | 'level';
 
 export function DrillLibrary({ drills, onUpdateDrill, onDeleteDrill, onSelectDrill }: DrillLibraryProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
@@ -42,8 +43,8 @@ export function DrillLibrary({ drills, onUpdateDrill, onDeleteDrill, onSelectDri
     let result = [...drills];
 
     // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+    if (deferredSearchQuery) {
+      const query = deferredSearchQuery.toLowerCase();
       result = result.filter(d => 
         d.name.toLowerCase().includes(query) ||
         d.description?.toLowerCase().includes(query) ||
@@ -79,7 +80,7 @@ export function DrillLibrary({ drills, onUpdateDrill, onDeleteDrill, onSelectDri
     });
 
     return result;
-  }, [drills, searchQuery, selectedCategory, selectedLevel, selectedTags, sortBy]);
+  }, [drills, deferredSearchQuery, selectedCategory, selectedLevel, selectedTags, sortBy]);
 
   const handleExportLibrary = useCallback(() => {
     exportData({

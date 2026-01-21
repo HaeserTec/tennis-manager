@@ -95,6 +95,10 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
    const [draggedSessionId, setDraggedSessionId] = useState<string | null>(null);
    const [isRepeatEnabled, setIsRepeatEnabled] = useState(false);
    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+   
+   // View Range Config
+   const [viewStartHour, setViewStartHour] = useState(13);
+   const [viewEndHour, setViewEndHour] = useState(19);
 
    // Edit Modal State
    const [editingSession, setEditingSession] = useState<TrainingSession | null>(null);
@@ -377,6 +381,28 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                   </SelectContent>
                </Select>
 
+               {/* View Range */}
+               <div className="grid grid-cols-2 gap-2">
+                  <div>
+                     <label className="text-[9px] font-bold text-muted-foreground uppercase">Start</label>
+                     <Select value={String(viewStartHour)} onValueChange={v => setViewStartHour(Number(v))}>
+                        <SelectTrigger className="h-8 text-xs bg-card border-border"><SelectValue /></SelectTrigger>
+                        <SelectContent className="max-h-40">
+                           {Array.from({length: 24}).map((_, i) => <SelectItem key={i} value={String(i)}>{i}:00</SelectItem>)}
+                        </SelectContent>
+                     </Select>
+                  </div>
+                  <div>
+                     <label className="text-[9px] font-bold text-muted-foreground uppercase">End</label>
+                     <Select value={String(viewEndHour)} onValueChange={v => setViewEndHour(Number(v))}>
+                        <SelectTrigger className="h-8 text-xs bg-card border-border"><SelectValue /></SelectTrigger>
+                        <SelectContent className="max-h-40">
+                           {Array.from({length: 24}).map((_, i) => <SelectItem key={i} value={String(i)} disabled={i <= viewStartHour}>{i}:00</SelectItem>)}
+                        </SelectContent>
+                     </Select>
+                  </div>
+               </div>
+
                {/* Recurring Toggle */}
                <div 
                   onClick={() => setIsRepeatEnabled(!isRepeatEnabled)}
@@ -475,6 +501,8 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                      onEdit={setEditingSession}
                      onCreate={handleCreateSession}
                      onDragSession={setDraggedSessionId}
+                     startHour={viewStartHour}
+                     endHour={viewEndHour}
                   />
                )}
                {viewMode === 'month' && (
@@ -495,6 +523,8 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                      onEdit={setEditingSession}
                      onCreate={handleCreateSession}
                      onDragSession={setDraggedSessionId}
+                     startHour={viewStartHour}
+                     endHour={viewEndHour}
                   />
                )}
             </div>
@@ -504,8 +534,8 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
 }
 
 // --- Week View Component ---
-function WeekView({ currentDate, events, onDrop, location, weekDays, onRemovePlayer, onEdit, onCreate, onDragSession }: any) {
-   const hours = ['13:00', '14:00', '15:00', '16:00', '17:00', '18:00']; 
+function WeekView({ currentDate, events, onDrop, location, weekDays, onRemovePlayer, onEdit, onCreate, onDragSession, startHour = 13, endHour = 19 }: any) {
+   const hours = useMemo(() => Array.from({ length: endHour - startHour }, (_, i) => `${startHour + i}:00`), [startHour, endHour]);
 
    return (
       <div className="min-w-[640px] h-full flex flex-col">
@@ -625,8 +655,8 @@ function MonthView({ currentDate, events, location, onEdit }: any) {
 }
 
 // --- Day View Component ---
-function DayView({ currentDate, events, onDrop, location, onRemovePlayer, onEdit, onCreate, onDragSession }: any) {
-   const hours = ['13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
+function DayView({ currentDate, events, onDrop, location, onRemovePlayer, onEdit, onCreate, onDragSession, startHour = 13, endHour = 19 }: any) {
+   const hours = useMemo(() => Array.from({ length: endHour - startHour }, (_, i) => `${startHour + i}:00`), [startHour, endHour]);
    const daySessions = events.filter((e: any) => e.dateObj.toDateString() === currentDate.toDateString() && e.location === location);
 
    return (

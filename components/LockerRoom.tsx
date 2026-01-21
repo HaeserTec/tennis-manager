@@ -45,6 +45,11 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const listPanelRef = useRef<HTMLDivElement | null>(null);
+  
+  // Selection / Batch Mode
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
+
   const [listPanelWidth, setListPanelWidth] = useState(() => {
     if (typeof window === 'undefined') return 360;
     const saved = window.localStorage.getItem('tactics-lab-locker-panel-width');
@@ -74,6 +79,26 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
      setNewParentName("");
      setNewParentPhone("");
      setIsAddModalOpen(true);
+  };
+
+  const toggleSelectionMode = () => {
+     setIsSelectionMode(!isSelectionMode);
+     setSelectedPlayerIds(new Set());
+     setSelectedPlayerId(null);
+  };
+
+  const togglePlayerSelection = (id: string) => {
+     const next = new Set(selectedPlayerIds);
+     if (next.has(id)) next.delete(id);
+     else next.add(id);
+     setSelectedPlayerIds(next);
+  };
+
+  const handleBulkAssign = (drillId: string) => {
+     selectedPlayerIds.forEach(pid => onAssignDrill(pid, drillId));
+     alert(`Assigned drill to ${selectedPlayerIds.size} players.`);
+     setIsSelectionMode(false);
+     setSelectedPlayerIds(new Set());
   };
 
   const confirmCreatePlayer = () => {
@@ -250,9 +275,16 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
         <div className="p-4 border-b border-border/50 space-y-4">
            <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold tracking-tight">The Squad</h2>
-              <Button size="sm" onClick={handleOpenAddModal} className="h-8 text-xs">
-                 + Add
-              </Button>
+              <div className="flex gap-2">
+                 <Button variant="ghost" size="sm" onClick={toggleSelectionMode} className={cn("h-8 text-xs", isSelectionMode && "text-primary bg-primary/10")}>
+                    {isSelectionMode ? "Cancel" : "Select"}
+                 </Button>
+                 {!isSelectionMode && (
+                    <Button size="sm" onClick={handleOpenAddModal} className="h-8 text-xs">
+                       + Add
+                    </Button>
+                 )}
+              </div>
            </div>
            <div className="relative">
               <Input 
@@ -268,14 +300,24 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
           {filteredPlayers.map(player => (
             <button
               key={player.id}
-              onClick={() => setSelectedPlayerId(player.id)}
+              onClick={() => isSelectionMode ? togglePlayerSelection(player.id) : setSelectedPlayerId(player.id)}
               className={cn(
-                "w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left group",
-                selectedPlayerId === player.id 
-                  ? "bg-secondary border-primary/50 ring-1 ring-primary/20 shadow-[0_0_15px_-3px_rgba(217,70,239,0.2)]" 
-                  : "bg-card/40 border-transparent hover:bg-secondary"
+                "w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left group relative",
+                isSelectionMode && selectedPlayerIds.has(player.id)
+                  ? "bg-primary/10 border-primary/50"
+                  : selectedPlayerId === player.id 
+                     ? "bg-secondary border-primary/50 ring-1 ring-primary/20 shadow-[0_0_15px_-3px_rgba(217,70,239,0.2)]" 
+                     : "bg-card/40 border-transparent hover:bg-secondary"
               )}
             >
+              {isSelectionMode && (
+                 <div className={cn(
+                    "h-5 w-5 rounded border flex items-center justify-center transition-all mr-1",
+                    selectedPlayerIds.has(player.id) ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground"
+                 )}>
+                    {selectedPlayerIds.has(player.id) && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>}
+                 </div>
+              )}
               <div 
                 className="h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 overflow-hidden border-2"
                 style={{ 
@@ -296,6 +338,19 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
             </button>
           ))}
         </div>
+
+        {/* Bulk Action Footer */}
+        {isSelectionMode && selectedPlayerIds.size > 0 && (
+           <div className="p-4 border-t border-border bg-card/80 backdrop-blur animate-in slide-in-from-bottom-2">
+              <div className="text-xs font-bold text-muted-foreground mb-2 uppercase tracking-wider">{selectedPlayerIds.size} Selected</div>
+              <Select onValueChange={handleBulkAssign}>
+                 <SelectTrigger className="w-full h-9 text-xs"><SelectValue placeholder="Assign Drill..." /></SelectTrigger>
+                 <SelectContent>
+                    {drills.map(d => <SelectItem key={d.id} value={d.id!}>{d.name}</SelectItem>)}
+                 </SelectContent>
+              </Select>
+           </div>
+        )}
       </div>
 
       {/* Detail Panel */}

@@ -111,6 +111,85 @@ export function HomeDashboard({ stats, scoreboard, recents, onQuickAction, onSel
            />
         </div>
 
+        {/* Jump Back In (Recents) */}
+        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700 delay-100">
+           <div className="flex items-center gap-2">
+              <div className="h-1 w-1 rounded-full bg-primary animate-pulse" />
+              <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground">Jump Back In</h2>
+           </div>
+           
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Recent Players */}
+              <div className="space-y-3">
+                 <h3 className="text-xs font-bold text-foreground opacity-50">Active Roster</h3>
+                 <div className="space-y-2">
+                    {recents.players.slice(0, 3).map(p => (
+                       <button 
+                          key={p.id} 
+                          onClick={() => onSelectRecent('player', p.id)}
+                          className="w-full flex items-center gap-3 p-3 rounded-xl bg-card/30 hover:bg-card border border-transparent hover:border-border transition-all group"
+                       >
+                          <div className="h-8 w-8 rounded-lg bg-secondary flex items-center justify-center text-xs font-bold text-muted-foreground group-hover:text-foreground group-hover:scale-110 transition-all" style={{ backgroundColor: p.avatarColor }}>
+                             {p.name.substring(0, 2)}
+                          </div>
+                          <div className="text-left">
+                             <div className="text-sm font-bold text-foreground">{p.name}</div>
+                             <div className="text-[10px] text-muted-foreground">{p.level}</div>
+                          </div>
+                       </button>
+                    ))}
+                    {recents.players.length === 0 && <div className="text-[10px] text-muted-foreground italic pl-2">No active players</div>}
+                 </div>
+              </div>
+
+              {/* Recent Drills */}
+              <div className="space-y-3">
+                 <h3 className="text-xs font-bold text-foreground opacity-50">Recent Drills</h3>
+                 <div className="space-y-2">
+                    {recents.drills.slice(0, 3).map(d => (
+                       <button 
+                          key={d.id} 
+                          onClick={() => onSelectRecent('drill', d.id!)}
+                          className="w-full flex items-center gap-3 p-3 rounded-xl bg-card/30 hover:bg-card border border-transparent hover:border-border transition-all group"
+                       >
+                          <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-all">
+                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
+                          </div>
+                          <div className="text-left flex-1 min-w-0">
+                             <div className="text-sm font-bold text-foreground truncate">{d.name}</div>
+                             <div className="text-[10px] text-muted-foreground">{d.format} • {d.intensity}</div>
+                          </div>
+                       </button>
+                    ))}
+                    {recents.drills.length === 0 && <div className="text-[10px] text-muted-foreground italic pl-2">No recent drills</div>}
+                 </div>
+              </div>
+
+              {/* Recent Plans */}
+              <div className="space-y-3">
+                 <h3 className="text-xs font-bold text-foreground opacity-50">Session Plans</h3>
+                 <div className="space-y-2">
+                    {recents.plans.slice(0, 3).map(p => (
+                       <button 
+                          key={p.id} 
+                          onClick={() => onSelectRecent('plan', p.id)}
+                          className="w-full flex items-center gap-3 p-3 rounded-xl bg-card/30 hover:bg-card border border-transparent hover:border-border transition-all group"
+                       >
+                          <div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-all">
+                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                          </div>
+                          <div className="text-left flex-1 min-w-0">
+                             <div className="text-sm font-bold text-foreground truncate">{p.name}</div>
+                             <div className="text-[10px] text-muted-foreground">{p.items?.length || 0} Drills</div>
+                          </div>
+                       </button>
+                    ))}
+                    {recents.plans.length === 0 && <div className="text-[10px] text-muted-foreground italic pl-2">No recent plans</div>}
+                 </div>
+              </div>
+           </div>
+        </div>
+
         {/* System Status Footer */}
         <div className="pt-8 border-t border-border/30">
            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-black uppercase tracking-widest text-emerald-400">
