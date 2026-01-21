@@ -14,29 +14,44 @@ interface LandingScreenProps {
 
 export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingScreenProps) {
   const [view, setView] = useState<'selection' | 'coach-auth' | 'client-auth'>('selection');
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleCoachSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setSuccessMsg('');
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      if (authMode === 'signup') {
+         const { data, error: authError } = await supabase.auth.signUp({
+            email,
+            password,
+         });
+         if (authError) throw authError;
+         if (data.user) {
+            setSuccessMsg('Account created! Please check your email to confirm.');
+            setAuthMode('login'); // Switch back to login
+         }
+      } else {
+         const { data, error: authError } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+         });
 
-      if (authError) throw authError;
+         if (authError) throw authError;
 
-      if (data.user) {
-         onCoachLogin();
+         if (data.user) {
+            onCoachLogin();
+         }
       }
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      setError(err.message || 'Authentication failed');
     } finally {
       setLoading(false);
     }
@@ -108,11 +123,13 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
            {view === 'coach-auth' && (
               <form onSubmit={handleCoachSubmit} className="space-y-4">
                  <div className="text-center">
-                    <h3 className="text-lg font-bold">Coach Login</h3>
-                    <p className="text-xs text-slate-400 mt-1">Enter your credentials</p>
+                    <h3 className="text-lg font-bold">{authMode === 'login' ? 'Coach Login' : 'Create Account'}</h3>
+                    <p className="text-xs text-slate-400 mt-1">{authMode === 'login' ? 'Enter your credentials' : 'Join the coaching staff'}</p>
                  </div>
                  
                  <div className="space-y-3">
+                    {successMsg && <div className="p-2 bg-green-500/20 border border-green-500/30 rounded text-center text-xs text-green-300">{successMsg}</div>}
+                    
                     <div className="space-y-1">
                        <Input 
                           type="email" 
@@ -138,8 +155,18 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
                  <div className="flex gap-3 pt-2">
                     <Button type="button" variant="ghost" className="flex-1" onClick={() => setView('selection')}>Back</Button>
                     <Button type="submit" disabled={loading} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-bold">
-                        {loading ? '...' : 'Enter'}
+                        {loading ? '...' : (authMode === 'login' ? 'Enter' : 'Sign Up')}
                     </Button>
+                 </div>
+                 
+                 <div className="text-center pt-2">
+                    <button 
+                       type="button"
+                       onClick={() => { setAuthMode(m => m === 'login' ? 'signup' : 'login'); setError(''); setSuccessMsg(''); }}
+                       className="text-[10px] text-slate-400 hover:text-white underline underline-offset-2"
+                    >
+                       {authMode === 'login' ? "Don't have an account? Sign Up" : "Already have an account? Log In"}
+                    </button>
                  </div>
               </form>
            )}
