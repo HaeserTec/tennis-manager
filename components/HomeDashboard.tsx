@@ -47,7 +47,7 @@ export function HomeDashboard({ stats, scoreboard, recents, onQuickAction, onSel
                 {greeting}
               </h1>
               <p className="text-muted-foreground text-sm md:text-base font-medium tracking-wide uppercase">
-                Tactics Lab & Academy Command Center
+                VGTA Command Center
               </p>
             </div>
           </div>

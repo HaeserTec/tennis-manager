@@ -44,24 +44,24 @@
   }
 
   .midnight {
-    --background: 222 47% 11%;
+    --background: 220 10% 12%;
     --foreground: 210 40% 98%;
-    --card: 217 33% 15%;
+    --card: 220 10% 16%;
     --card-foreground: 210 40% 98%;
-    --popover: 217 33% 15%;
+    --popover: 220 10% 16%;
     --popover-foreground: 210 40% 98%;
     --primary: 300 85% 60%;
     --primary-foreground: 300 5% 10%;
-    --secondary: 217 33% 20%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 20%;
+    --secondary: 220 10% 20%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 220 10% 20%;
     --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 20%;
+    --accent: 220 10% 20%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
+    --border: 220 10% 20%;
+    --input: 220 10% 20%;
     --ring: 300 85% 60%;
   }
 }

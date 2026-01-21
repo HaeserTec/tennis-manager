@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn, nanoid } from '@/lib/utils';
-import { X, MapPin, Plus, Trash2, Settings, Globe } from 'lucide-react';
+import { X, MapPin, Plus, Trash2, Settings, Globe, RefreshCw, Cloud } from 'lucide-react';
 import type { Session } from '@/lib/playbook';
 
 export interface LocationConfig {
@@ -20,13 +20,15 @@ interface SettingsDialogProps {
   onUpdateLocations: (locs: LocationConfig[]) => void;
   theme: 'dark' | 'light' | 'midnight';
   onSetTheme: (t: 'dark' | 'light' | 'midnight') => void;
+  onForceSync?: () => Promise<void>;
 }
 
-export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, theme, onSetTheme }: SettingsDialogProps) {
+export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, theme, onSetTheme, onForceSync }: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<'general' | 'academy'>('academy');
   const [newLocName, setNewLocName] = useState('');
   const [newLocRate, setNewLocRate] = useState('');
   const [newLocType, setNewLocType] = useState<Session>('Group');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   if (!isOpen) return null;
 
@@ -46,6 +48,13 @@ export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, 
 
   const handleRemoveLocation = (id: string) => {
     onUpdateLocations(locations.filter(l => l.id !== id));
+  };
+
+  const handleSync = async () => {
+    if (!onForceSync) return;
+    setIsSyncing(true);
+    await onForceSync();
+    setTimeout(() => setIsSyncing(false), 500); // Visual feedback
   };
 
   return (
@@ -233,6 +242,28 @@ export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, 
                     </button>
                   </div>
                 </div>
+
+                <div className="flex flex-col gap-4 p-4 rounded-xl border border-border bg-card/40">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-sm flex items-center gap-2">
+                         <Cloud className="w-4 h-4" /> Cloud Sync
+                      </div>
+                      <div className="text-xs text-muted-foreground">Manually trigger a data synchronization.</div>
+                    </div>
+                    <Button 
+                       size="sm" 
+                       variant="outline" 
+                       onClick={handleSync} 
+                       disabled={isSyncing}
+                       className="gap-2"
+                    >
+                       <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
+                       {isSyncing ? 'Syncing...' : 'Sync Now'}
+                    </Button>
+                  </div>
+                </div>
+
               </div>
             )}
           </div>

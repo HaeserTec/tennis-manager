@@ -6,12 +6,13 @@ import {
   ClipboardList, 
   Activity, 
   Users, 
-  LayoutTemplate,
+  LayoutTemplate, 
   Library,
-  Settings,
-  Download,
-  Trophy,
-  Briefcase
+  Settings, 
+  Download, 
+  Trophy, 
+  Briefcase,
+  LogOut
 } from 'lucide-react';
   import { ThemeToggle } from './ThemeToggle';
   
@@ -25,6 +26,7 @@ import {
     theme: 'dark' | 'light' | 'midnight';
     onToggleTheme: () => void;
     onOpenSettings: () => void;
+    onOpenClientPortal?: () => void;
     installPrompt?: any;
     onInstall?: () => void;
   }
@@ -37,6 +39,7 @@ import {
     theme,
     onToggleTheme,
     onOpenSettings,
+    onOpenClientPortal,
     installPrompt,
     onInstall
   }: NavigationRailProps) {
@@ -128,6 +131,11 @@ import {
 
       {/* Bottom Actions */}
       <div className="mt-auto flex flex-col gap-4 items-center">
+        {onOpenClientPortal && (
+           <button onClick={onOpenClientPortal} className="p-2 text-muted-foreground hover:text-red-400 transition-colors" title="Log Out">
+              <LogOut className="w-5 h-5" />
+           </button>
+        )}
         {installPrompt && (
           <button 
             onClick={onInstall} 

@@ -1,0 +1,402 @@
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { 
+  Drill, DrillTemplate, Sequence, SessionPlan, Player, Client, TrainingSession, 
+  LocationConfig, SessionLog, Term 
+} from './playbook';
+import { nanoid, safeJsonParse, nowMs } from './utils';
+import { supabase } from './supabase';
+
+// Check if Supabase is configured
+const isSupabaseEnabled = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
+
+// --- Default Data / Constants ---
+
+const PRESET_TEMPLATES: DrillTemplate[] = [
+  {
+    id: 'tpl_singles',
+    name: 'Singles Court',
+    description: 'Standard setup',
+    diagram: { nodes: [], paths: [] }
+  },
+  {
+    id: 'tpl_doubles',
+    name: 'Doubles Setup',
+    description: '4 players at net',
+    diagram: { nodes: [], paths: [] }
+  }
+];
+
+// --- Helper Functions ---
+
+function normalizeDrill(d: Drill): Drill {
+  const id = d.id ?? nanoid();
+  const createdAt = d.createdAt ?? nowMs();
+  const updatedAt = d.updatedAt ?? createdAt;
+  return {
+    ...d,
+    id,
+    tags: d.tags ?? [],
+    starred: d.starred ?? false,
+    createdAt,
+    updatedAt,
+  };
+}
+
+function normalizeTemplate(t: DrillTemplate): DrillTemplate {
+    return {
+        ...t,
+        id: t.id ?? nanoid(),
+        diagram: t.diagram || { nodes: [], paths: [] },
+        starred: t.starred ?? false,
+        createdAt: t.createdAt ?? nowMs(),
+        updatedAt: t.updatedAt ?? nowMs(),
+    }
+}
+
+// --- Context Types ---
+
+interface DataContextType {
+  // State
+  drills: Drill[];
+  templates: DrillTemplate[];
+  sequences: Sequence[];
+  plans: SessionPlan[];
+  players: Player[];
+  clients: Client[];
+  sessions: TrainingSession[];
+  locations: LocationConfig[];
+  logs: SessionLog[];
+  terms: Term[];
+
+  // Actions
+  setDrills: React.Dispatch<React.SetStateAction<Drill[]>>;
+  setTemplates: React.Dispatch<React.SetStateAction<DrillTemplate[]>>;
+  setSequences: React.Dispatch<React.SetStateAction<Sequence[]>>;
+  setPlans: React.Dispatch<React.SetStateAction<SessionPlan[]>>;
+  setPlayers: React.Dispatch<React.SetStateAction<Player[]>>;
+  setClients: React.Dispatch<React.SetStateAction<Client[]>>;
+  setSessions: React.Dispatch<React.SetStateAction<TrainingSession[]>>;
+  setLocations: React.Dispatch<React.SetStateAction<LocationConfig[]>>;
+  setLogs: React.Dispatch<React.SetStateAction<SessionLog[]>>;
+  setTerms: React.Dispatch<React.SetStateAction<Term[]>>;
+
+  // High-Level Actions
+  addDrill: (drill: Drill) => void;
+  updateDrill: (drill: Drill) => void;
+  deleteDrill: (id: string) => void;
+  
+  addTemplate: (template: DrillTemplate) => void;
+  updateTemplate: (template: DrillTemplate) => void;
+  deleteTemplate: (id: string) => void;
+
+  addSequence: (sequence: Sequence) => void;
+  updateSequence: (sequence: Sequence) => void;
+  deleteSequence: (id: string) => void;
+
+  addPlan: (plan: SessionPlan) => void;
+  updatePlan: (plan: SessionPlan) => void;
+  deletePlan: (id: string) => void;
+
+  addPlayer: (player: Player) => void;
+  updatePlayer: (player: Player) => void;
+  deletePlayer: (id: string) => void;
+
+  upsertClient: (client: Client) => void;
+  upsertSession: (session: TrainingSession) => void;
+  upsertLog: (log: SessionLog) => void;
+  forceSync: () => Promise<void>;
+}
+
+const DataContext = createContext<DataContextType | undefined>(undefined);
+
+// --- Provider Component ---
+
+export function DataProvider({ children }: { children: React.ReactNode }) {
+  // 1. Initialize State from LocalStorage (Optimistic Default)
+  // We use refs to hold the initial local state to compare against DB later
+  const [drills, setDrills] = useState<Drill[]>(() => {
+    const saved = safeJsonParse<Drill[]>(localStorage.getItem('tactics-lab-drills'), []);
+    return (saved ?? []).map(normalizeDrill);
+  });
+  const [templates, setTemplates] = useState<DrillTemplate[]>(() => {
+      const saved = safeJsonParse<DrillTemplate[]>(localStorage.getItem('tactics-lab-templates'), PRESET_TEMPLATES);
+      return (saved ?? PRESET_TEMPLATES).map(normalizeTemplate);
+  });
+  const [sequences, setSequences] = useState<Sequence[]>(() => {
+      const saved = safeJsonParse<Sequence[]>(localStorage.getItem('tactics-lab-sequences'), []);
+      return (saved ?? []).map(s => ({...s, id: s.id ?? nanoid(), frames: s.frames || []}));
+  });
+  const [plans, setPlans] = useState<SessionPlan[]>(() => {
+      const saved = safeJsonParse<SessionPlan[]>(localStorage.getItem('tactics-lab-plans'), []);
+      return (saved ?? []).map(p => ({...p, id: p.id ?? nanoid(), items: p.items || []}));
+  });
+  const [players, setPlayers] = useState<Player[]>(() => {
+      const saved = safeJsonParse<Player[]>(localStorage.getItem('tactics-lab-players'), []);
+      return (saved ?? []).map(p => ({...p, id: p.id ?? nanoid(), assignedDrills: p.assignedDrills || []}));
+  });
+  const [clients, setClients] = useState<Client[]>(() => {
+      const saved = safeJsonParse<Client[]>(localStorage.getItem('tactics-lab-clients'), []);
+      return saved ?? [];
+  });
+  const [sessions, setSessions] = useState<TrainingSession[]>(() => {
+      const saved = safeJsonParse<TrainingSession[]>(localStorage.getItem('tactics-lab-sessions'), []);
+      return saved ?? [];
+  });
+  const [locations, setLocations] = useState<LocationConfig[]>(() => {
+      return safeJsonParse<LocationConfig[]>(localStorage.getItem('tactics-lab-locations'), []);
+  });
+  const [logs, setLogs] = useState<SessionLog[]>(() => {
+      return safeJsonParse<SessionLog[]>(localStorage.getItem('tactics-lab-logs'), []);
+  });
+  const [terms, setTerms] = useState<Term[]>(() => {
+      return safeJsonParse<Term[]>(localStorage.getItem('tactics-lab-terms'), []);
+  });
+
+  // Track if we have done the initial sync
+  const hasSynced = useRef(false);
+
+  // Sync Logic
+  const forceSync = useCallback(async () => {
+    if (!isSupabaseEnabled) {
+        alert("Supabase is not configured! Check .env file.");
+        return;
+    }
+    console.log('--- STARTING SAFE SYNC ---');
+
+    const syncTable = async (tableName: string, localData: any[], setter: React.Dispatch<React.SetStateAction<any[]>>) => {
+        try {
+            const { data: remoteData, error } = await supabase.from(tableName).select('*');
+            
+            if (error) {
+                console.error(`Error fetching ${tableName}:`, error);
+                alert(`Sync Error (${tableName}): ${error.message}`);
+                return;
+            }
+
+            if (remoteData && remoteData.length > 0) {
+                // Case A: Cloud has data -> Cloud wins (Download)
+                console.log(`[Sync] ${tableName}: Downloading ${remoteData.length} items from cloud.`);
+                setter(remoteData);
+            } else if (localData.length > 0) {
+                // Case B: Cloud is empty BUT Local has data -> Seed Cloud (Upload)
+                // Sanitize: Remove undefined values which break Supabase
+                const sanitized = localData.map(item => JSON.parse(JSON.stringify(item)));
+                console.log(`[Sync] ${tableName}: Cloud empty. Seeding ${localData.length} items from local.`);
+                const { error: uploadError } = await supabase.from(tableName).upsert(sanitized);
+                if (uploadError) {
+                    console.error(`[Sync] Failed to seed ${tableName}:`, uploadError);
+                    alert(`Upload Error (${tableName}): ${uploadError.message}`);
+                }
+            } else {
+                // Case C: Both empty -> Do nothing
+                console.log(`[Sync] ${tableName}: Clean slate.`);
+            }
+        } catch (e: any) {
+            console.error(`[Sync] Unexpected error for ${tableName}:`, e);
+            alert(`Critical Error (${tableName}): ${e.message || e}`);
+        }
+    };
+
+    try {
+        // Step 1: Upload independent tables
+        await Promise.all([
+            syncTable('clients', clients, setClients), // MUST be before players
+            syncTable('drills', drills, setDrills),
+            syncTable('drill_templates', templates, setTemplates),
+            syncTable('sequences', sequences, setSequences),
+            syncTable('session_plans', plans, setPlans),
+            syncTable('training_sessions', sessions, setSessions),
+            syncTable('locations', locations, setLocations),
+            syncTable('terms', terms, setTerms),
+        ]);
+
+        // Step 2: Upload players (depends on clients)
+        await syncTable('players', players, setPlayers);
+
+        // Step 3: Upload logs (depends on players)
+        await syncTable('session_logs', logs, setLogs);
+
+        console.log('--- SYNC COMPLETE ---');
+        alert("Sync Completed Successfully!"); 
+    } catch (err: any) {
+        alert(`Global Sync Failed: ${err.message}`);
+    }
+  }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms]);
+
+  // 2. Supabase Sync on Mount
+  useEffect(() => {
+    if (!isSupabaseEnabled || hasSynced.current) return;
+    hasSynced.current = true;
+    forceSync();
+  }, [forceSync]);
+
+  // 3. Persistence Effects (LocalStorage - Always Backup)
+  useEffect(() => { localStorage.setItem('tactics-lab-drills', JSON.stringify(drills)); }, [drills]);
+  useEffect(() => { localStorage.setItem('tactics-lab-templates', JSON.stringify(templates)); }, [templates]);
+  useEffect(() => { localStorage.setItem('tactics-lab-sequences', JSON.stringify(sequences)); }, [sequences]);
+  useEffect(() => { localStorage.setItem('tactics-lab-plans', JSON.stringify(plans)); }, [plans]);
+  useEffect(() => { localStorage.setItem('tactics-lab-players', JSON.stringify(players)); }, [players]);
+  useEffect(() => { 
+     try { localStorage.setItem('tactics-lab-clients', JSON.stringify(clients)); } 
+     catch (e) { console.error("Storage Full"); }
+  }, [clients]);
+  useEffect(() => { localStorage.setItem('tactics-lab-sessions', JSON.stringify(sessions)); }, [sessions]);
+  useEffect(() => { localStorage.setItem('tactics-lab-locations', JSON.stringify(locations)); }, [locations]);
+  useEffect(() => { localStorage.setItem('tactics-lab-logs', JSON.stringify(logs)); }, [logs]);
+  useEffect(() => { localStorage.setItem('tactics-lab-terms', JSON.stringify(terms)); }, [terms]);
+
+  // 4. Helper to Sync to Supabase
+  const syncToSupabase = async (table: string, data: any, action: 'upsert' | 'delete') => {
+    if (!isSupabaseEnabled) return;
+    try {
+      if (action === 'delete') {
+        await supabase.from(table).delete().eq('id', data.id);
+      } else {
+        // Remove undefined fields to avoid issues, or trust standard normalization
+        await supabase.from(table).upsert(data);
+      }
+    } catch (err) {
+      console.error(`Failed to sync ${table}:`, err);
+    }
+  };
+
+  // 5. Actions with Dual-Write
+  const addDrill = useCallback((drill: Drill) => {
+    setDrills(prev => [drill, ...prev]);
+    syncToSupabase('drills', drill, 'upsert');
+  }, []);
+  const updateDrill = useCallback((drill: Drill) => {
+    setDrills(prev => prev.map(d => d.id === drill.id ? drill : d));
+    syncToSupabase('drills', drill, 'upsert');
+  }, []);
+  const deleteDrill = useCallback((id: string) => {
+    setDrills(prev => prev.filter(d => d.id !== id));
+    syncToSupabase('drills', { id }, 'delete');
+  }, []);
+
+  const addTemplate = useCallback((t: DrillTemplate) => {
+    setTemplates(prev => [t, ...prev]);
+    syncToSupabase('drill_templates', t, 'upsert');
+  }, []);
+  const updateTemplate = useCallback((t: DrillTemplate) => {
+    setTemplates(prev => prev.map(prevT => prevT.id === t.id ? t : prevT));
+    syncToSupabase('drill_templates', t, 'upsert');
+  }, []);
+  const deleteTemplate = useCallback((id: string) => {
+    setTemplates(prev => prev.filter(t => t.id !== id));
+    syncToSupabase('drill_templates', { id }, 'delete');
+  }, []);
+
+  const addSequence = useCallback((s: Sequence) => {
+    setSequences(prev => [s, ...prev]);
+    syncToSupabase('sequences', s, 'upsert');
+  }, []);
+  const updateSequence = useCallback((s: Sequence) => {
+    setSequences(prev => prev.map(prevS => prevS.id === s.id ? s : prevS));
+    syncToSupabase('sequences', s, 'upsert');
+  }, []);
+  const deleteSequence = useCallback((id: string) => {
+    setSequences(prev => prev.filter(s => s.id !== id));
+    syncToSupabase('sequences', { id }, 'delete');
+  }, []);
+
+  const addPlan = useCallback((p: SessionPlan) => {
+    setPlans(prev => [p, ...prev]);
+    syncToSupabase('session_plans', p, 'upsert');
+  }, []);
+  const updatePlan = useCallback((p: SessionPlan) => {
+    setPlans(prev => prev.map(prevP => prevP.id === p.id ? p : prevP));
+    syncToSupabase('session_plans', p, 'upsert');
+  }, []);
+  const deletePlan = useCallback((id: string) => {
+    setPlans(prev => prev.filter(p => p.id !== id));
+    syncToSupabase('session_plans', { id }, 'delete');
+  }, []);
+
+  const addPlayer = useCallback((p: Player) => {
+    setPlayers(prev => [p, ...prev]);
+    syncToSupabase('players', p, 'upsert');
+  }, []);
+  const updatePlayer = useCallback((p: Player) => {
+    setPlayers(prev => prev.map(prevP => prevP.id === p.id ? p : prevP));
+    syncToSupabase('players', p, 'upsert');
+  }, []);
+  const deletePlayer = useCallback((id: string) => {
+    setPlayers(prev => prev.filter(p => p.id !== id));
+    syncToSupabase('players', { id }, 'delete');
+  }, []);
+
+  const upsertClient = useCallback((client: Client) => {
+     setClients(prev => {
+        const idx = prev.findIndex(c => c.id === client.id);
+        if (idx >= 0) {
+           const next = [...prev];
+           next[idx] = client;
+           return next;
+        }
+        return [client, ...prev];
+     });
+     syncToSupabase('clients', client, 'upsert');
+  }, []);
+
+  const upsertSession = useCallback((session: TrainingSession) => {
+     setSessions(prev => {
+        const idx = prev.findIndex(s => s.id === session.id);
+        if (idx >= 0) {
+           const next = [...prev];
+           next[idx] = session;
+           return next;
+        }
+        return [...prev, session];
+     });
+     syncToSupabase('training_sessions', session, 'upsert');
+  }, []);
+
+  const upsertLog = useCallback((log: SessionLog) => {
+     setLogs(prev => {
+        const idx = prev.findIndex(l => l.id === log.id);
+        if (idx >= 0) {
+           const next = [...prev];
+           next[idx] = log;
+           return next;
+        }
+        return [...prev, log];
+     });
+     syncToSupabase('session_logs', log, 'upsert');
+  }, []);
+
+  return (
+    <DataContext.Provider value={{
+      drills, setDrills,
+      templates, setTemplates,
+      sequences, setSequences,
+      plans, setPlans,
+      players, setPlayers,
+      clients, setClients,
+      sessions, setSessions,
+      locations, setLocations,
+      logs, setLogs,
+      terms, setTerms,
+
+      addDrill, updateDrill, deleteDrill,
+      addTemplate, updateTemplate, deleteTemplate,
+      addSequence, updateSequence, deleteSequence,
+      addPlan, updatePlan, deletePlan,
+      addPlayer, updatePlayer, deletePlayer,
+      upsertClient, upsertSession, upsertLog,
+      forceSync
+    }}>
+      {children}
+    </DataContext.Provider>
+  );
+}
+
+// --- Hook ---
+
+export function useData() {
+  const context = useContext(DataContext);
+  if (context === undefined) {
+    throw new Error('useData must be used within a DataProvider');
+  }
+  return context;
+}

@@ -4,8 +4,8 @@ import { PlaybookDiagramV2 } from '@/components/PlaybookDiagramV2';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { Drill, SessionType, Format, Intensity, Sequence, SequenceFrame, SessionPlan, Player, DrillTemplate, SessionLog, Term, Client, TrainingSession } from '@/lib/playbook';
-import { cn, nanoid, safeJsonParse, scheduleIdle, downloadTextFile, readTextFile, debounce } from '@/lib/utils';
+import type { Drill, SessionType, Format, Intensity, Sequence, SessionPlan, DrillTemplate } from '@/lib/playbook';
+import { cn, nanoid, nowMs } from '@/lib/utils';
 import { SessionBuilder } from '@/components/SessionBuilder';
 import { HomeDashboard } from '@/components/HomeDashboard';
 import { DrillThumbnail } from '@/components/DrillThumbnail';
@@ -14,8 +14,11 @@ import { AcademyOffice } from '@/components/AcademyOffice';
 import { Scoreboard } from '@/components/Scoreboard';
 import { NavigationRail, AppMode } from '@/components/NavigationRail';
 import { MobileFAB } from '@/components/MobileFAB';
-import { SettingsDialog, LocationConfig } from '@/components/SettingsDialog';
+import { SettingsDialog } from '@/components/SettingsDialog';
 import { DrillLibrary } from '@/components/DrillLibrary';
+import { ClientDashboard } from '@/components/ClientDashboard';
+import { LandingScreen } from '@/components/LandingScreen';
+import { useData } from '@/lib/data-provider';
 
 // Simple Textarea component
 const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
@@ -64,35 +67,7 @@ const getBadgeStyles = (type: 'intensity' | 'level' | 'session' | 'time', value:
   return cn(base, "bg-transparent text-muted-foreground border-border border-dashed");
 };
 
-const PRESET_TEMPLATES: DrillTemplate[] = [
-  {
-    id: 'tpl_singles',
-    name: 'Singles Court',
-    description: 'Standard setup',
-    diagram: { nodes: [], paths: [] }
-  },
-  {
-    id: 'tpl_doubles',
-    name: 'Doubles Setup',
-    description: '4 players at net',
-    diagram: { nodes: [], paths: [] }
-  }
-];
-
-const PRESET_DRILLS: Drill[] = [];
-
-const nowMs = () => Date.now();
-
-type ConfirmDialogTone = "default" | "danger";
-
-type ConfirmDialogOptions = {
-  title: string;
-  message: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  tone?: ConfirmDialogTone;
-};
-
+// Helper for saving
 function normalizeDrill(d: Drill): Drill {
   const id = d.id ?? nanoid();
   const createdAt = d.createdAt ?? nowMs();
@@ -118,7 +93,38 @@ function normalizeTemplate(t: DrillTemplate): DrillTemplate {
     }
 }
 
+// Auth State
+type AuthState = { type: 'coach' } | { type: 'client', clientId: string } | null;
+
+type ConfirmDialogTone = "default" | "danger";
+
+type ConfirmDialogOptions = {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: ConfirmDialogTone;
+  showSave?: boolean;
+};
+
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<AuthState>(null);
+
+  // Consume Data Context
+  const { 
+     drills, setDrills, addDrill, updateDrill, deleteDrill,
+     templates, setTemplates, addTemplate, updateTemplate, deleteTemplate,
+     sequences, setSequences, addSequence, deleteSequence,
+     plans, setPlans, addPlan, updatePlan, deletePlan,
+     players, setPlayers, addPlayer, updatePlayer, deletePlayer,
+     clients, upsertClient,
+     sessions, upsertSession,
+     locations, setLocations,
+     logs, upsertLog,
+     terms,
+     forceSync
+  } = useData();
+
   const [appMode, setAppMode] = useState<AppMode>('standard');
   const [isHome, setIsHome] = useState(true);
   const [theme, setTheme] = useState<'dark' | 'light' | 'midnight'>(() => {
@@ -143,7 +149,7 @@ export default function App() {
       root.classList.add('light');
     } else if (theme === 'midnight') {
       root.classList.add('midnight');
-      root.classList.add('dark'); // Ensure dark mode defaults (like color-scheme) apply if needed, but 'midnight' overrides vars
+      root.classList.add('dark');
     } else {
       root.classList.add('dark');
     }
@@ -174,7 +180,7 @@ export default function App() {
         await document.documentElement.requestFullscreen();
       }
     } catch {
-      // Ignore fullscreen errors (e.g. user gesture or browser policy).
+      // Ignore fullscreen errors
     }
   }, [fullscreenSupported]);
 
@@ -210,155 +216,7 @@ export default function App() {
     setPendingPlayerId(null);
   }, [appMode, pendingPlayerId]);
 
-  // Data States
-  const [drills, setDrills] = useState<Drill[]>(() => {
-    const saved = safeJsonParse<Drill[]>(localStorage.getItem('tactics-lab-drills'), []);
-    return (saved ?? []).map(normalizeDrill);
-  });
-  const [templates, setTemplates] = useState<DrillTemplate[]>(() => {
-      const saved = safeJsonParse<DrillTemplate[]>(localStorage.getItem('tactics-lab-templates'), PRESET_TEMPLATES);
-      return (saved ?? PRESET_TEMPLATES).map(normalizeTemplate);
-  });
-  
-  const [sequences, setSequences] = useState<Sequence[]>(() => {
-      const saved = safeJsonParse<Sequence[]>(localStorage.getItem('tactics-lab-sequences'), []);
-      return (saved ?? []).map(s => ({...s, id: s.id ?? nanoid(), frames: s.frames || []}));
-  });
-
-  const [plans, setPlans] = useState<SessionPlan[]>(() => {
-      const saved = safeJsonParse<SessionPlan[]>(localStorage.getItem('tactics-lab-plans'), []);
-      return (saved ?? []).map(p => ({...p, id: p.id ?? nanoid(), items: p.items || []}));
-  });
-
-  const [players, setPlayers] = useState<Player[]>(() => {
-      const saved = safeJsonParse<Player[]>(localStorage.getItem('tactics-lab-players'), []);
-      return (saved ?? []).map(p => ({...p, id: p.id ?? nanoid(), assignedDrills: p.assignedDrills || []}));
-  });
-
-  const [clients, setClients] = useState<Client[]>(() => {
-      const saved = safeJsonParse<Client[]>(localStorage.getItem('tactics-lab-clients'), []);
-      return saved ?? [];
-  });
-
-  const [sessions, setSessions] = useState<TrainingSession[]>(() => {
-      const saved = safeJsonParse<TrainingSession[]>(localStorage.getItem('tactics-lab-sessions'), []);
-      return saved ?? [];
-  });
-
-  const [locations, setLocations] = useState<LocationConfig[]>(() => {
-      return safeJsonParse<LocationConfig[]>(localStorage.getItem('tactics-lab-locations'), []);
-  });
-
-  const [logs, setLogs] = useState<SessionLog[]>(() => {
-      return safeJsonParse<SessionLog[]>(localStorage.getItem('tactics-lab-logs'), []);
-  });
-
-  const [terms, setTerms] = useState<Term[]>(() => {
-      return safeJsonParse<Term[]>(localStorage.getItem('tactics-lab-terms'), []);
-  });
-
-  // MIGRATION: Convert Legacy Player Schedules to Session Entities
-  useEffect(() => {
-     if (localStorage.getItem('tactics-lab-migration-v1')) return;
-     
-     const newSessions: TrainingSession[] = [...sessions];
-     let migratedCount = 0;
-
-     players.forEach(p => {
-        p.schedule?.forEach(slot => {
-           if (slot.date) {
-              // Check if session exists for this time/loc
-              const existing = newSessions.find(s => s.date === slot.date && s.startTime === slot.startTime && s.location === slot.location);
-              if (existing) {
-                 if (!existing.participantIds.includes(p.id)) {
-                    existing.participantIds.push(p.id);
-                 }
-              } else {
-                 newSessions.push({
-                    id: nanoid(),
-                    date: slot.date,
-                    startTime: slot.startTime,
-                    endTime: slot.endTime,
-                    location: slot.location,
-                    type: slot.sessionType,
-                    price: slot.fee || 350,
-                    participantIds: [p.id],
-                    maxCapacity: slot.sessionType === 'Group' ? 5 : slot.sessionType === 'Semi' ? 2 : 1,
-                    createdAt: Date.now(),
-                    updatedAt: Date.now()
-                 });
-              }
-              migratedCount++;
-           }
-        });
-     });
-
-     if (migratedCount > 0) {
-        setSessions(newSessions);
-        console.log(`Migrated ${migratedCount} legacy slots to TrainingSessions`);
-     }
-     localStorage.setItem('tactics-lab-migration-v1', 'true');
-  }, []);
-
-  // Persistence Effects
-  useEffect(() => { localStorage.setItem('tactics-lab-drills', JSON.stringify(drills)); }, [drills]);
-  useEffect(() => { localStorage.setItem('tactics-lab-templates', JSON.stringify(templates)); }, [templates]);
-  useEffect(() => { localStorage.setItem('tactics-lab-sequences', JSON.stringify(sequences)); }, [sequences]);
-  useEffect(() => { localStorage.setItem('tactics-lab-plans', JSON.stringify(plans)); }, [plans]);
-  useEffect(() => { localStorage.setItem('tactics-lab-players', JSON.stringify(players)); }, [players]);
-  useEffect(() => { 
-     try {
-        localStorage.setItem('tactics-lab-clients', JSON.stringify(clients)); 
-     } catch (e) {
-        console.error("Storage Quota Exceeded", e);
-        alert("CRITICAL ERROR: Storage is full! Your last change (Payment/File) was NOT saved. Please delete old data or use smaller files.");
-     }
-  }, [clients]);
-  useEffect(() => { localStorage.setItem('tactics-lab-sessions', JSON.stringify(sessions)); }, [sessions]);
-  useEffect(() => { localStorage.setItem('tactics-lab-locations', JSON.stringify(locations)); }, [locations]);
-  useEffect(() => { localStorage.setItem('tactics-lab-logs', JSON.stringify(logs)); }, [logs]);
-  useEffect(() => { localStorage.setItem('tactics-lab-terms', JSON.stringify(terms)); }, [terms]);
-
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-  // ... (Active Item States)
-
-  // Scoreboard Actions
-  const handleUpsertLog = (log: SessionLog) => {
-     setLogs(prev => {
-        const idx = prev.findIndex(l => l.id === log.id);
-        if (idx >= 0) {
-           const next = [...prev];
-           next[idx] = log;
-           return next;
-        }
-        return [...prev, log];
-     });
-  };
-
-  const handleUpsertClient = (client: Client) => {
-     setClients(prev => {
-        const idx = prev.findIndex(c => c.id === client.id);
-        if (idx >= 0) {
-           const next = [...prev];
-           next[idx] = client;
-           return next;
-        }
-        return [client, ...prev];
-     });
-  };
-
-  const handleUpsertSession = (session: TrainingSession) => {
-     setSessions(prev => {
-        const idx = prev.findIndex(s => s.id === session.id);
-        if (idx >= 0) {
-           const next = [...prev];
-           next[idx] = session;
-           return next;
-        }
-        return [...prev, session];
-     });
-  };
 
   // Active Item States
   const [activeDrillId, setActiveDrillId] = useState<string | null>(null);
@@ -398,7 +256,7 @@ export default function App() {
     }
   };
   
-  // RESTORED FILTER STATES
+  // Filter States
   const [filterLevel, setFilterLevel] = useState<string>("All");
   const [filterIntensity, setFilterIntensity] = useState<string>("All");
   const [showStarredOnly, setShowStarredOnly] = useState(false);
@@ -436,6 +294,38 @@ export default function App() {
     setConfirmDialog(null);
   }, []);
 
+  // Actions wrapped to use Context
+  const handleSave = () => {
+    if (!editForm) return;
+    
+    const currentDrill = drills.find(d => d.id === editForm.id);
+    const finalDiagram = currentDrill?.diagram || editForm.diagram;
+
+    const updated = normalizeDrill({ ...editForm, diagram: finalDiagram, updatedAt: nowMs() });
+    updateDrill(updated); // Context Action
+    
+    setIsEditing(false);
+    setEditForm(null);
+    setEditTemplateForm(null);
+    setIsDirty(false); 
+    window.dispatchEvent(new CustomEvent("playbook:diagram:apply-drill", { detail: { drill: updated } }));
+  };
+
+  const handleSaveTemplate = () => {
+     if (!editTemplateForm) return;
+
+     const currentTemplate = templates.find(t => t.id === editTemplateForm.id);
+     const finalDiagram = currentTemplate?.diagram || editTemplateForm.diagram;
+
+     const updated = normalizeTemplate({ ...editTemplateForm, diagram: finalDiagram, updatedAt: nowMs() });
+     updateTemplate(updated); // Context Action
+
+     setIsEditing(false);
+     setEditTemplateForm(null);
+     setIsDirty(false);
+     window.dispatchEvent(new CustomEvent("playbook:diagram:apply-template", { detail: { template: updated } }));
+  };
+
   // Guard Helper
   const checkUnsavedChanges = useCallback(async () => {
     if (!isDirty) return true;
@@ -459,23 +349,17 @@ export default function App() {
     }
     
     return false;
-  }, [isDirty, requestConfirmation, appMode, editForm, editTemplateForm]);
+  }, [isDirty, requestConfirmation, appMode, editForm, editTemplateForm, drills, templates]); // Added drills/templates deps since save needs them
 
-  // Diagram Sync
+  // Diagram Sync - NOW UPDATES CONTEXT
   useEffect(() => {
     const handler = (e: Event) => {
        const detail = (e as CustomEvent).detail;
        if (detail?.state) {
           latestCanvasState.current = detail.state;
           
-          // CRITICAL FIX: The app auto-saves diagram changes to the 'drills'/'templates' state 
-          // in real-time (see logic below). Therefore, if we have a selection, we do NOT 
-          // need to block navigation with "Unsaved Changes".
-          // We only mark dirty if we are in "Scratchpad" mode (no active item) and have content.
-          
           if (!hasSelection) {
              const hasContent = detail.state.nodes.length > 0 || detail.state.paths.length > 0;
-             // Only dirty if there's actual content on the scratchpad
              if (hasContent) {
                 setIsDirty(true);
              }
@@ -500,7 +384,7 @@ export default function App() {
     };
     window.addEventListener("playbook:diagram:push-state", handler);
     return () => window.removeEventListener("playbook:diagram:push-state", handler);
-  }, [activeDrillId, activeTemplateId, activeSequenceId, currentFrameIndex, hasSelection]);
+  }, [activeDrillId, activeTemplateId, activeSequenceId, currentFrameIndex, hasSelection, setDrills, setTemplates, setSequences]);
 
   // Actions
   const handleNavigate = async (mode: AppMode) => {
@@ -544,28 +428,28 @@ export default function App() {
 
      if (appMode === 'standard') {
         const newDrill: Drill = { id: nanoid(), name: 'Untitled Drill', session: 'Private', format: 'Intermediate', intensity: 'Active', durationMins: 10, diagram: { nodes: [], paths: [] } };
-        setDrills([newDrill, ...drills]);
+        addDrill(newDrill); // Context Action
         setActiveDrillId(newDrill.id!);
         setEditForm(newDrill);
         setIsEditing(true);
-        setIsDirty(false); // Reset after explicit creation
+        setIsDirty(false); 
         window.dispatchEvent(new CustomEvent("playbook:diagram:apply-drill", { detail: { drill: newDrill } }));
      } else if (appMode === 'templates') {
         const newTemplate: DrillTemplate = { id: nanoid(), name: 'New Template', diagram: { nodes: [], paths: [] } };
-        setTemplates([newTemplate, ...templates]);
+        addTemplate(newTemplate); // Context Action
         setActiveTemplateId(newTemplate.id);
         setIsDirty(false);
         window.dispatchEvent(new CustomEvent("playbook:diagram:apply-template", { detail: { template: newTemplate } }));
      } else if (appMode === 'performance') {
         const newSeq: Sequence = { id: nanoid(), name: 'New Sequence', frames: [] };
-        setSequences([newSeq, ...sequences]);
+        addSequence(newSeq); // Context Action
         setActiveSequenceId(newSeq.id);
         setCurrentFrameIndex(0);
         setIsDirty(false);
         window.dispatchEvent(new CustomEvent("playbook:diagram:clear"));
      } else if (appMode === 'plans') {
         const newPlan: SessionPlan = { id: nanoid(), name: 'New Plan', items: [] };
-        setPlans([newPlan, ...plans]);
+        addPlan(newPlan); // Context Action
         setActivePlanId(newPlan.id);
      }
   };
@@ -580,25 +464,25 @@ export default function App() {
      if (!ok) return;
 
      if (type === 'drill') {
-        setDrills(drills.filter(d => d.id !== item.id));
+        deleteDrill(item.id); // Context Action
         if (activeDrillId === item.id) {
            setActiveDrillId(null);
            setIsDirty(false);
         }
      } else if (type === 'template') {
-        setTemplates(templates.filter(t => t.id !== item.id));
+        deleteTemplate(item.id); // Context Action
         if (activeTemplateId === item.id) {
            setActiveTemplateId(null);
            setIsDirty(false);
         }
      } else if (type === 'sequence') {
-        setSequences(sequences.filter(s => s.id !== item.id));
+        deleteSequence(item.id); // Context Action
         if (activeSequenceId === item.id) {
            setActiveSequenceId(null);
            setIsDirty(false);
         }
      } else if (type === 'plan') {
-        setPlans(plans.filter(p => p.id !== item.id));
+        deletePlan(item.id); // Context Action
         if (activePlanId === item.id) setActivePlanId(null);
      }
   };
@@ -613,7 +497,7 @@ export default function App() {
       updatedAt: nowMs(),
       createdAt: nowMs(),
     };
-    setDrills(prev => [newDrill, ...prev]);
+    addDrill(newDrill); // Context Action
   };
 
   const handleDuplicateTemplate = async (template: DrillTemplate) => {
@@ -626,48 +510,17 @@ export default function App() {
       updatedAt: nowMs(),
       createdAt: nowMs(),
     };
-    setTemplates(prev => [newTemplate, ...prev]);
+    addTemplate(newTemplate); // Context Action
   };
 
   const toggleStarDrill = (id: string) => {
-    const stamp = nowMs();
-    setDrills((prev) => prev.map((d) => (d.id === id ? { ...d, starred: !d.starred, updatedAt: stamp } : d)));
+    const drill = drills.find(d => d.id === id);
+    if (drill) updateDrill({ ...drill, starred: !drill.starred, updatedAt: nowMs() });
   };
 
   const toggleStarTemplate = (id: string) => {
-    const stamp = nowMs();
-    setTemplates((prev) => prev.map((t) => (t.id === id ? { ...t, starred: !t.starred, updatedAt: stamp } : t)));
-  };
-
-  const handleSave = () => {
-    if (!editForm) return;
-    
-    // Merge latest diagram from live state (updated by canvas) to prevent overwriting with stale form data
-    const currentDrill = drills.find(d => d.id === editForm.id);
-    const finalDiagram = currentDrill?.diagram || editForm.diagram;
-
-    const updated = normalizeDrill({ ...editForm, diagram: finalDiagram, updatedAt: nowMs() });
-    setDrills(prev => prev.map(d => d.id === updated.id ? updated : d));
-    setIsEditing(false);
-    setEditForm(null);
-    setEditTemplateForm(null);
-    setIsDirty(false); // Saved!
-    window.dispatchEvent(new CustomEvent("playbook:diagram:apply-drill", { detail: { drill: updated } }));
-  };
-
-  const handleSaveTemplate = () => {
-     if (!editTemplateForm) return;
-
-     // Merge latest diagram from live state
-     const currentTemplate = templates.find(t => t.id === editTemplateForm.id);
-     const finalDiagram = currentTemplate?.diagram || editTemplateForm.diagram;
-
-     const updated = normalizeTemplate({ ...editTemplateForm, diagram: finalDiagram, updatedAt: nowMs() });
-     setTemplates(prev => prev.map(t => t.id === updated.id ? updated : t));
-     setIsEditing(false);
-     setEditTemplateForm(null);
-     setIsDirty(false); // Saved!
-     window.dispatchEvent(new CustomEvent("playbook:diagram:apply-template", { detail: { template: updated } }));
+    const tpl = templates.find(t => t.id === id);
+    if (tpl) updateTemplate({ ...tpl, starred: !tpl.starred, updatedAt: nowMs() });
   };
 
   const handleCancel = () => {
@@ -723,7 +576,7 @@ export default function App() {
      setActiveDrillId(drill.id!);
      setEditForm(drill); 
      setIsEditing(false); 
-     setIsDirty(false); // Load fresh
+     setIsDirty(false); 
      window.dispatchEvent(new CustomEvent("playbook:diagram:apply-drill", { detail: { drill } }));
   };
 
@@ -759,8 +612,8 @@ export default function App() {
           createdAt: nowMs(),
           updatedAt: nowMs()
       };
-      setTemplates([newTpl, ...templates]);
-      setIsDirty(false); // Snapshot saved as template
+      addTemplate(newTpl); // Context Action
+      setIsDirty(false);
       alert("Template saved!");
   };
 
@@ -768,6 +621,37 @@ export default function App() {
   const todayKey = new Date().toLocaleDateString('en-CA');
   const loggedCount = new Set(logs.filter(l => l.date === todayKey).map(l => l.playerId)).size;
   const activeCount = players.filter(p => p.account?.status !== 'Inactive').length;
+
+  // ROUTING & AUTH CHECK
+  if (!currentUser) {
+     return (
+        <LandingScreen 
+           clients={clients}
+           onCoachLogin={() => setCurrentUser({ type: 'coach' })}
+           onClientLogin={(clientId) => setCurrentUser({ type: 'client', clientId })}
+        />
+     );
+  }
+
+  if (currentUser.type === 'client') {
+     const client = clients.find(c => c.id === currentUser.clientId);
+     if (client) {
+        return (
+           <ClientDashboard 
+              client={client}
+              players={players}
+              sessions={sessions}
+              logs={logs}
+              drills={drills}
+              onLogout={() => setCurrentUser(null)}
+           />
+        );
+     } else {
+        // Fallback if client not found
+        setCurrentUser(null);
+        return null;
+     }
+  }
 
   return (
     <div className="flex h-screen h-[100dvh] w-full bg-background text-foreground overflow-hidden font-sans">
@@ -791,6 +675,7 @@ export default function App() {
            theme={theme}
            onToggleTheme={toggleTheme}
            onOpenSettings={() => setIsSettingsOpen(true)}
+           onOpenClientPortal={() => setCurrentUser(null)} // Log Out
            installPrompt={installPrompt}
            onInstall={handleInstall}
         />
@@ -805,6 +690,7 @@ export default function App() {
            theme={theme}
            onToggleTheme={toggleTheme}
            onOpenSettings={() => setIsSettingsOpen(true)}
+           onOpenClientPortal={() => setCurrentUser(null)} // Log Out
            installPrompt={installPrompt}
            onInstall={handleInstall}
         />
@@ -1179,16 +1065,16 @@ export default function App() {
                 locations={locations}
                 clients={clients} // Pass new clients
                 sessions={sessions} // Pass session state
-                onUpdatePlayer={p => setPlayers(prev => prev.map(x => x.id === p.id ? p : x))}
-                onUpsertClient={handleUpsertClient}
-                onUpsertSession={handleUpsertSession} // Pass session handler
+                onUpdatePlayer={updatePlayer}
+                onUpsertClient={upsertClient}
+                onUpsertSession={upsertSession} // Pass session handler
                 onClose={handleGoHome}
              />
          ) : appMode === 'scoreboard' ? (
              <Scoreboard 
                 players={players}
                 logs={logs}
-                onUpsertLog={handleUpsertLog}
+                onUpsertLog={upsertLog}
                 onNavigateHome={handleGoHome}
              />
          ) : appMode === 'players' ? (
@@ -1197,9 +1083,9 @@ export default function App() {
                drills={drills} 
                clients={clients} // Pass new clients
                initialSelectedPlayerId={pendingPlayerId}
-               onUpdatePlayer={p => setPlayers(prev => prev.map(x => x.id === p.id ? p : x))}
-               onAddPlayer={p => setPlayers([p, ...players])}
-               onUpsertClient={handleUpsertClient} // Pass client upsert
+               onUpdatePlayer={updatePlayer}
+               onAddPlayer={addPlayer}
+               onUpsertClient={upsertClient} // Pass client upsert
                onDeletePlayer={async id => {
                   const ok = await requestConfirmation({
                      title: "Delete Player",
@@ -1207,13 +1093,15 @@ export default function App() {
                      confirmLabel: "Delete",
                      tone: "danger"
                   });
-                  if (ok) setPlayers(players.filter(p => p.id !== id));
+                  if (ok) deletePlayer(id);
                }}
                onAssignDrill={(pid, did) => {
-                   setPlayers(prev => prev.map(p => p.id === pid ? {...p, assignedDrills: [...p.assignedDrills, did]} : p));
+                   const p = players.find(x => x.id === pid);
+                   if (p) updatePlayer({ ...p, assignedDrills: [...p.assignedDrills, did] });
                }}
                onUnassignDrill={(pid, did) => {
-                   setPlayers(prev => prev.map(p => p.id === pid ? {...p, assignedDrills: p.assignedDrills.filter(x => x !== did)} : p));
+                   const p = players.find(x => x.id === pid);
+                   if (p) updatePlayer({ ...p, assignedDrills: p.assignedDrills.filter(x => x !== did) });
                }}
             />
           ) : appMode === 'plans' ? (
@@ -1221,7 +1109,7 @@ export default function App() {
                  <SessionBuilder 
                     drills={drills} 
                     plan={plans.find(p => p.id === activePlanId)!} 
-                    onUpdatePlan={(updated) => setPlans(prev => prev.map(p => p.id === updated.id ? updated : p))} 
+                    onUpdatePlan={updatePlan} 
                  />
               ) : (
                  <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">Select a plan to edit</div>
@@ -1229,8 +1117,8 @@ export default function App() {
           ) : appMode === 'library' ? (
              <DrillLibrary
                 drills={drills}
-                onUpdateDrill={(updated) => setDrills(prev => prev.map(d => d.id === updated.id ? updated : d))}
-                onDeleteDrill={(id) => setDrills(prev => prev.filter(d => d.id !== id))}
+                onUpdateDrill={updateDrill}
+                onDeleteDrill={deleteDrill}
                 onSelectDrill={(drill) => {
                    handleNavigate('standard');
                    handleSelectDrill(drill);
@@ -1355,6 +1243,7 @@ export default function App() {
          onUpdateLocations={setLocations}
          theme={theme}
          onSetTheme={setTheme}
+         onForceSync={forceSync}
       />
     </div>
   );

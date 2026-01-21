@@ -13,7 +13,8 @@ import {
   Moon,
   Settings,
   Download,
-  Trophy
+  Trophy,
+  LogOut
 } from 'lucide-react';
 import type { AppMode } from './NavigationRail';
 
@@ -25,6 +26,7 @@ interface MobileFABProps {
   theme: 'dark' | 'light' | 'midnight';
   onToggleTheme: () => void;
   onOpenSettings: () => void;
+  onOpenClientPortal?: () => void;
   installPrompt?: any;
   onInstall?: () => void;
 }
@@ -37,6 +39,7 @@ export function MobileFAB({
   theme, 
   onToggleTheme, 
   onOpenSettings,
+  onOpenClientPortal,
   installPrompt,
   onInstall
 }: MobileFABProps) {
@@ -73,6 +76,15 @@ export function MobileFAB({
            active={false}
            color="text-yellow-400"
         />
+        {onOpenClientPortal && (
+           <FabItem 
+             label="Log Out" 
+             icon={<LogOut className="w-5 h-5" />} 
+             onClick={() => handleSelect(onOpenClientPortal)}
+             active={false}
+             color="text-red-400"
+           />
+        )}
         
         {installPrompt && (
           <FabItem 

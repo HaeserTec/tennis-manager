@@ -1,4 +1,4 @@
-import { Player, SessionLog, ProgressGoal, ProgressMetric, Drill } from './playbook';
+import { Player, SessionLog, ProgressGoal, ProgressMetric, Drill, TrainingSession } from './playbook';
 
 export interface ScoreData {
   tech: number;
@@ -227,20 +227,28 @@ export function calculateDrillStats(drills: Drill[], categories: { id: string }[
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-export function calculateDashboardStats(players: Player[]): DashboardStats {
+export function calculateDashboardStats(players: Player[], sessions: TrainingSession[]): DashboardStats {
   let totalRevenue = 0;
-  let totalSessions = 0;
+  let totalSessions = sessions.length;
   const activeClientIds = new Set<string>();
   const sessionTypeCounts: Record<string, number> = { Private: 0, Semi: 0, Group: 0 };
 
-  players.forEach(player => {
-    player.schedule?.forEach(s => {
-       const fee = s.fee || 200; 
-       totalRevenue += (fee * 4);
-       totalSessions += 4;
-       sessionTypeCounts[s.sessionType] = (sessionTypeCounts[s.sessionType] || 0) + 1;
-       activeClientIds.add(player.id);
-    });
+  sessions.forEach(s => {
+     // Assuming price is per session, not per player, but logic might vary.
+     // For now, let's assume total revenue = sum of all session prices * number of participants?
+     // OR if the price on the session is the "Rate", then it's per hour.
+     // Let's assume price is total session fee for simplicity, or per player?
+     // Convention: Private R350 (Total), Group R200 (Per head? or Total?).
+     // Let's assume the session.price is the total revenue for that slot.
+     
+     totalRevenue += (s.price || 0);
+     
+     sessionTypeCounts[s.type] = (sessionTypeCounts[s.type] || 0) + 1;
+     s.participantIds.forEach(pid => {
+        // Find player to get client
+        const p = players.find(x => x.id === pid);
+        if (p?.clientId) activeClientIds.add(p.clientId);
+     });
   });
 
   let mostPopularType = 'Private';
@@ -254,9 +262,9 @@ export function calculateDashboardStats(players: Player[]): DashboardStats {
 
   return {
     totalRevenue,
-    revenueChange: 100, 
+    revenueChange: 100, // Placeholder
     totalSessions,
-    sessionsChange: 100,
+    sessionsChange: 100, // Placeholder
     activeClients: activeClientIds.size,
     clientGrowth: activeClientIds.size,
     avgPerSession: totalSessions > 0 ? Math.round(totalRevenue / totalSessions) : 0,
@@ -264,72 +272,98 @@ export function calculateDashboardStats(players: Player[]): DashboardStats {
   };
 }
 
-export function getRevenueChartData(players: Player[], period: 'week' | 'month' | 'year'): ChartData[] {
+export function getRevenueChartData(sessions: TrainingSession[], period: 'week' | 'month' | 'year'): ChartData[] {
   const data: ChartData[] = [];
   const now = new Date();
   
   if (period === 'week') {
     for (let i = 0; i < 7; i++) {
       const d = new Date(now);
-      d.setDate(d.getDate() + i);
-      const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
+      d.setDate(d.getDate() - (now.getDay() - 1) + i); // Start from Monday of current week
+      const dateStr = d.toISOString().split('T')[0];
       
       let val = 0;
-      players.forEach(p => {
-         p.schedule?.forEach(s => {
-            if (s.day === dayName) {
-               val += (s.fee || 200);
-            }
-         });
+      sessions.forEach(s => {
+         if (s.date === dateStr) {
+            val += (s.price || 0);
+         }
       });
       data.push({ label: d.toLocaleDateString('en-US', { weekday: 'short' }), value: val });
     }
   } else if (period === 'month') {
-     for (let i = 0; i < 4; i++) {
-        let weeklyTotal = 0;
-        players.forEach(p => {
-           p.schedule?.forEach(s => {
-              weeklyTotal += (s.fee || 200);
-           });
+     // Show current calendar month (all weeks)
+     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+     
+     // Break into 4-5 weeks
+     let current = new Date(startOfMonth);
+     let weekNum = 1;
+     
+     while (current <= endOfMonth) {
+        const weekStart = new Date(current);
+        const weekEnd = new Date(current);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        
+        let val = 0;
+        sessions.forEach(s => {
+           const sDate = new Date(s.date);
+           if (sDate >= weekStart && sDate <= weekEnd && sDate <= endOfMonth) {
+              val += (s.price || 0);
+           }
         });
-        data.push({ label: `Week ${i+1}`, value: weeklyTotal });
+        
+        data.push({ label: `Week ${weekNum}`, value: val });
+        current.setDate(current.getDate() + 7);
+        weekNum++;
      }
   } else {
      for (let i = 0; i < 12; i++) {
-        let monthlyTotal = 0;
-        players.forEach(p => {
-           p.schedule?.forEach(s => {
-              monthlyTotal += ((s.fee || 200) * 4);
-           });
+        const d = new Date(now.getFullYear(), i, 1); // Jan to Dec
+        const monthIdx = i;
+        
+        let val = 0;
+        sessions.forEach(s => {
+           const sDate = new Date(s.date);
+           if (sDate.getFullYear() === now.getFullYear() && sDate.getMonth() === monthIdx) {
+              val += (s.price || 0);
+           }
         });
-        const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-        data.push({ label: d.toLocaleDateString('en-US', { month: 'short' }), value: monthlyTotal });
+        data.push({ label: d.toLocaleDateString('en-US', { month: 'short' }), value: val });
      }
   }
   return data;
 }
 
-export function getHeatmapData(players: Player[]): HeatmapData {
+export function getHeatmapData(sessions: TrainingSession[]): HeatmapData {
    const heatmap: HeatmapData = {};
-   players.forEach(p => {
-      p.schedule?.forEach(s => {
-         const hour = s.startTime.split(':')[0] + ":00";
-         const key = `${s.day}-${hour}`;
-         heatmap[key] = (heatmap[key] || 0) + 1;
-      });
+   sessions.forEach(s => {
+      const dayName = new Date(s.date).toLocaleDateString('en-US', { weekday: 'long' });
+      // s.startTime is "14:00". We need "14:00:00" or just key based on hour
+      // The component expects "Monday-14:00:00"
+      const hour = s.startTime.split(':')[0] + ":00:00"; // Assuming component formats strict
+      // Actually component loops ['13:00'...] and key is `${day}-${time}:00` -> "Monday-13:00:00"
+      
+      const key = `${dayName}-${s.startTime}:00`; 
+      heatmap[key] = (heatmap[key] || 0) + 1;
    });
    return heatmap;
 }
 
-export function getClientHealth(players: Player[]) {
+export function getClientHealth(players: Player[], sessions: TrainingSession[]) {
    const now = new Date();
    return players.map(p => {
-      const hasSchedule = (p.schedule?.length || 0) > 0;
-      const lastSessionTs = p.attendance && p.attendance.length > 0 ? Math.max(...p.attendance) : 0;
-      const daysSince = lastSessionTs ? Math.floor((now.getTime() - lastSessionTs) / (1000 * 60 * 60 * 24)) : (hasSchedule ? 0 : 999);
+      // Find last session for this player
+      const playerSessions = sessions.filter(s => s.participantIds.includes(p.id));
+      const lastSession = playerSessions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+      
+      const lastSessionTs = lastSession ? new Date(lastSession.date).getTime() : 0;
+      const daysSince = lastSessionTs ? Math.floor((now.getTime() - lastSessionTs) / (1000 * 60 * 60 * 24)) : 999;
+      
+      const hasSchedule = playerSessions.length > 0;
       
       let score = hasSchedule ? 80 : 20;
       if (daysSince > 30) score -= 40;
+      if (daysSince < 7) score += 20;
       
       return {
          ...p,

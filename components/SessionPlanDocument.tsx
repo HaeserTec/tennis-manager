@@ -122,7 +122,7 @@ export const SessionPlanDocument = React.forwardRef<HTMLDivElement, SessionPlanD
 
         {/* Footer */}
         <footer className="mt-4 pt-4 border-t border-zinc-200 flex justify-between items-center text-[10px] text-zinc-400 uppercase tracking-widest font-medium shrink-0">
-          <span>Tennis Tactics Lab • Professional Academy Edition</span>
+          <span>Von Gericke Tennis Academy • Professional Edition</span>
           <span>Page 1 of 1</span>
         </footer>
       </div>

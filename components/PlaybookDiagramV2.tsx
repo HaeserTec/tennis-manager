@@ -186,10 +186,12 @@ type PlaybookDiagramProps = {
   showHeader?: boolean;
   templates?: DrillTemplate[];
   onSaveTemplate?: (name: string) => void;
+  disablePersistence?: boolean;
+  isBackground?: boolean;
 };
 
 export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDiagramProps>(
-  ({ fill = false, viewBoxWidth, viewBoxHeight, showHeader = true, templates = [], onSaveTemplate }, ref) => {
+  ({ fill = false, viewBoxWidth, viewBoxHeight, showHeader = true, templates = [], onSaveTemplate, disablePersistence = false, isBackground = false }, ref) => {
   
   const [orientation, setOrientation] = React.useState<'landscape' | 'portrait'>(() => {
     if (typeof window !== 'undefined') {
@@ -595,6 +597,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
   // Load persisted diagram after mount to prevent hydration mismatches
   React.useEffect(() => {
+    if (disablePersistence) return;
     const s = loadState();
     if (s.nodes?.length || s.paths?.length) {
       setState({ nodes: s.nodes, paths: s.paths || [] });
@@ -760,6 +763,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
   const persistDebounce = React.useRef<number | null>(null);
   React.useEffect(() => {
+    if (disablePersistence) return;
     if (persistDebounce.current) window.clearTimeout(persistDebounce.current);
     persistDebounce.current = window.setTimeout(() => {
       saveState(state);
@@ -767,7 +771,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     return () => {
       if (persistDebounce.current) window.clearTimeout(persistDebounce.current);
     };
-  }, [state]);
+  }, [state, disablePersistence]);
 
   // Auto-attach to selected drill when enabled (debounced)
   React.useEffect(() => {
@@ -1528,7 +1532,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
         const bottomSingleY = centerY + singlesWidthPx / 2;
 
         return (
-          <g style={{ stroke: '#ffffff' }} strokeOpacity={0.95} strokeWidth={2} fill="none">
+          <g style={{ stroke: 'currentColor' }} strokeOpacity={0.5} strokeWidth={2} fill="none">
             {/* Court Surface Fill */}
             {courtSurface !== 'blueprint' && (
                 <rect 
@@ -1578,7 +1582,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
         const rightSingleX = centerX + singlesWidthPx / 2;
 
         return (
-          <g style={{ stroke: '#ffffff' }} strokeOpacity={0.95} strokeWidth={2} fill="none">
+          <g style={{ stroke: 'currentColor' }} strokeOpacity={0.5} strokeWidth={2} fill="none">
              {/* Court Surface Fill */}
              {courtSurface !== 'blueprint' && (
                 <rect 
@@ -1687,12 +1691,12 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     const lines: React.ReactNode[] = [];
     for (let x = 0; x <= VB_WIDTH; x += step) {
       lines.push(
-        <line key={`gx-${x}`} x1={x} y1={0} x2={x} y2={VB_HEIGHT} stroke="#ffffff" strokeOpacity={0.05} strokeWidth={1} />
+        <line key={`gx-${x}`} x1={x} y1={0} x2={x} y2={VB_HEIGHT} stroke="currentColor" strokeOpacity={0.05} strokeWidth={1} />
       );
     }
     for (let y = 0; y <= VB_HEIGHT; y += step) {
       lines.push(
-        <line key={`gy-${y}`} x1={0} y1={y} x2={VB_WIDTH} y2={y} stroke="#ffffff" strokeOpacity={0.05} strokeWidth={1} />
+        <line key={`gy-${y}`} x1={0} y1={y} x2={VB_WIDTH} y2={y} stroke="currentColor" strokeOpacity={0.05} strokeWidth={1} />
       );
     }
     return <g role="img" aria-label={`Grid overlay with ${step}px spacing`}>{lines}</g>;
@@ -1743,6 +1747,22 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
       window.removeEventListener("playbook:diagram:clear", clearHandler);
     };
   }, []);
+
+  if (isBackground) {
+    return (
+      <div className={cn("relative overflow-hidden w-full h-full", fill && "flex-1")}>
+        <svg
+          ref={svgRef}
+          viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="w-full h-full touch-none select-none pointer-events-none"
+        >
+          <rect x={0} y={0} width={VB_WIDTH} height={VB_HEIGHT} fill="transparent" />
+          <g>{drawCourt()}</g>
+        </svg>
+      </div>
+    );
+  }
 
   return (
     <TooltipProvider>
@@ -2108,7 +2128,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
       </CardHeader>
       )}
       
-      <CardContent ref={canvasWrapRef} className={cn("relative p-0 overflow-hidden bg-[#0c0f14]", fill && "flex-1")}>
+      <CardContent ref={canvasWrapRef} className={cn("relative p-0 overflow-hidden bg-background", fill && "flex-1")}>
           {/* Quick Access Toolbar (Draggable + Collapsible) */}
           <div
             ref={toolbarRef}
@@ -2476,7 +2496,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
             onTouchStart={onStartSvg}
           >
             {/* background */}
-            <rect x={0} y={0} width={VB_WIDTH} height={VB_HEIGHT} fill="#09090b" />
+            <rect x={0} y={0} width={VB_WIDTH} height={VB_HEIGHT} fill="hsl(var(--background))" />
             {/* subtle grid */}
             {gridOn ? renderGrid(20) : null}
             <defs>

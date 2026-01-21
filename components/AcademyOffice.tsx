@@ -2,14 +2,14 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn, nanoid } from '@/lib/utils';
-import type { Player, Session, Client, Payment, TrainingSession } from '@/lib/playbook';
+import type { Player, Session, Client, Payment, TrainingSession, SessionType } from '@/lib/playbook';
 import { 
   Check, X, Phone, Search, Calendar as CalendarIcon, Users, 
   Activity, CreditCard, Plus, MapPin, 
   Copy, Share2, Briefcase, DollarSign,
   Trash2, Filter, ChevronLeft, ChevronRight,
   TrendingUp, Clock, FileText, User, Users2,
-  Repeat, AlertCircle, MoreHorizontal, Edit2
+  Repeat, AlertCircle, MoreHorizontal, Edit2, SlidersHorizontal
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InsightsDashboard } from './InsightsDashboard';
@@ -47,34 +47,34 @@ export function AcademyOffice({ players, locations, clients, sessions, onUpdateP
   return (
     <div className="flex flex-col h-full bg-background animate-in fade-in duration-500 overflow-hidden">
       {/* Top Navigation Bar */}
-      <div className="h-16 shrink-0 border-b border-border/40 bg-background/60 backdrop-blur-xl flex items-center justify-between px-6 z-20">
-        <div className="flex items-center gap-4">
+      <div className="h-16 shrink-0 border-b border-border/40 bg-background/60 backdrop-blur-xl flex items-center justify-between px-6 z-20 overflow-x-auto no-scrollbar gap-4">
+        <div className="flex items-center gap-4 shrink-0">
            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 p-[1px]">
               <div className="h-full w-full rounded-[11px] bg-background/20 backdrop-blur-sm flex items-center justify-center text-white">
                  <Briefcase className="w-5 h-5" />
               </div>
            </div>
-           <div>
+           <div className="hidden sm:block">
               <h1 className="text-lg font-black uppercase tracking-tighter text-foreground bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">SessionPro</h1>
               <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Office Management</p>
            </div>
         </div>
 
-        <nav className="flex items-center gap-1 bg-secondary/50 p-1 rounded-xl border border-border/50">
+        <nav className="flex items-center gap-1 bg-secondary/50 p-1 rounded-xl border border-border/50 shrink-0">
            <NavTab id="insights" label="Insights" icon={<Activity className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
            <NavTab id="scheduler" label="Scheduler" icon={<CalendarIcon className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
            <NavTab id="accounts" label="Accounts" icon={<Users className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
            <NavTab id="bookings" label="Bookings" icon={<Clock className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
         </nav>
         
-        <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-red-500/10 hover:text-red-500">
+        <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-red-500/10 hover:text-red-500 shrink-0">
            <X className="w-5 h-5" />
         </Button>
       </div>
 
       {/* Main Workspace */}
       <div className="flex-1 overflow-hidden relative">
-         {activeTab === 'insights' && <InsightsDashboard players={players} />}
+         {activeTab === 'insights' && <InsightsDashboard players={players} sessions={sessions} />}
          {activeTab === 'scheduler' && <SchedulerWorkspace players={players} locations={locations} sessions={sessions} onUpsertSession={onUpsertSession} />}
          {activeTab === 'accounts' && <AccountsWorkspace clients={clients} players={players} onUpsertClient={onUpsertClient} />}
          {activeTab === 'bookings' && <BookingsWorkspace clients={clients} players={players} sessions={sessions} />}
@@ -92,7 +92,9 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
    const [selectedSessionType, setSelectedSessionType] = useState<SessionType>('Private');
    const [selectedLocation, setSelectedLocation] = useState<string>("Main Court");
    const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null);
+   const [draggedSessionId, setDraggedSessionId] = useState<string | null>(null);
    const [isRepeatEnabled, setIsRepeatEnabled] = useState(false);
+   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
    // Edit Modal State
    const [editingSession, setEditingSession] = useState<TrainingSession | null>(null);
@@ -125,14 +127,37 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
 
    const handleDrop = (e: React.DragEvent, date: Date, time: string) => {
       e.preventDefault();
+      const dateString = date.toISOString().split('T')[0];
+
+      // CASE 1: Rescheduling Existing Session
+      if (draggedSessionId) {
+         const session = sessions.find(s => s.id === draggedSessionId);
+         if (!session) return;
+
+         // If dropping on same slot, do nothing
+         if (session.date === dateString && session.startTime === time) {
+            setDraggedSessionId(null);
+            return;
+         }
+
+         onUpsertSession({
+            ...session,
+            date: dateString,
+            startTime: time,
+            endTime: `${parseInt(time.split(':')[0]) + 1}:00`,
+            updatedAt: Date.now()
+         });
+         setDraggedSessionId(null);
+         return;
+      }
+
+      // CASE 2: Adding Player (New or Existing Session)
       if (!draggedPlayerId) return;
       
       const player = players.find(p => p.id === draggedPlayerId);
       if (!player) return;
 
-      const dateString = date.toISOString().split('T')[0];
-
-      // 1. Check for Existing Session in this Slot
+      // Check for Existing Session in this Slot
       let targetSession = sessions.find(s => 
          s.date === dateString && 
          s.startTime === time && 
@@ -141,21 +166,17 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
 
       if (targetSession) {
          // ADD TO EXISTING
-         
-         // Type Check
          if (targetSession.type !== selectedSessionType) {
             if(!confirm(`This is a ${targetSession.type} session. Change it to ${selectedSessionType}?`)) return;
             targetSession = { ...targetSession, type: selectedSessionType, maxCapacity: SESSION_LIMITS[selectedSessionType] };
          }
 
-         // Capacity Check
          if (targetSession.participantIds.length >= targetSession.maxCapacity) {
             alert(`Session full! Max ${targetSession.maxCapacity}.`);
             setDraggedPlayerId(null);
             return;
          }
 
-         // Duplicate Check
          if (targetSession.participantIds.includes(player.id)) {
             alert("Player already in session.");
             setDraggedPlayerId(null);
@@ -184,7 +205,6 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
             updatedAt: Date.now()
          };
 
-         // Handle Repeating
          if (isRepeatEnabled) {
             const nextDate = new Date(date);
             const currentMonth = nextDate.getMonth();
@@ -258,11 +278,11 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
    };
 
    return (
-      <div className="flex h-full animate-in fade-in duration-300 relative">
+      <div className="flex flex-col md:flex-row h-full animate-in fade-in duration-300 relative">
          
          {/* EDIT SESSION MODAL */}
          {editingSession && (
-            <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="absolute inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
                <div className="w-full max-w-sm bg-card border border-border rounded-xl shadow-2xl p-6 space-y-4">
                   <h3 className="font-bold text-lg">{sessions.find(s => s.id === editingSession.id) ? 'Edit Session' : 'Create Session'}</h3>
                   
@@ -298,8 +318,16 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
             </div>
          )}
 
-         {/* Sidebar Controls */}
-         <div className="w-72 bg-card/30 border-r border-border/50 p-4 flex flex-col gap-6 backdrop-blur-sm">
+         {/* Sidebar Controls (Responsive Drawer) */}
+         <div className={cn(
+            "fixed inset-y-0 left-0 z-50 w-72 bg-card border-r border-border p-4 flex flex-col gap-6 transition-transform duration-300 md:relative md:translate-x-0 md:bg-card/30 md:backdrop-blur-sm",
+            isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+         )}>
+            <div className="flex items-center justify-between md:hidden">
+               <h3 className="font-bold">Controls</h3>
+               <Button size="icon" variant="ghost" onClick={() => setIsSidebarOpen(false)}><X className="w-5 h-5"/></Button>
+            </div>
+
             {/* Mini Calendar (Mon Start) */}
             <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
                <div className="flex items-center justify-between mb-4">
@@ -310,7 +338,7 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                   </div>
                </div>
                <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground font-bold mb-2">
-                  {['M','T','W','T','F','S','S'].map(d => <div key={d}>{d}</div>)}
+                  {['M','T','W','T','F','S','S'].map((d, i) => <div key={`${d}-${i}`}>{d}</div>)}
                </div>
                <div className="grid grid-cols-7 gap-1">
                   {generateCalendarDays(currentDate).map((d, i) => (
@@ -394,23 +422,32 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
             </div>
          </div>
 
+         {/* Mobile Sidebar Overlay */}
+         {isSidebarOpen && (
+            <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden" onClick={() => setIsSidebarOpen(false)} />
+         )}
+
          {/* Main Calendar View */}
          <div className="flex-1 flex flex-col min-w-0 bg-background">
             {/* Header with Navigation */}
-            <div className="h-16 border-b border-border/50 flex items-center justify-between px-6 bg-card/10">
-               <div className="flex items-center gap-4">
-                  <div className="flex gap-1">
+            <div className="h-16 border-b border-border/50 flex items-center justify-between px-4 md:px-6 bg-card/10 gap-2">
+               <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
+                  <Button variant="ghost" size="icon" className="md:hidden shrink-0" onClick={() => setIsSidebarOpen(true)}>
+                     <SlidersHorizontal className="w-5 h-5" />
+                  </Button>
+                  
+                  <div className="flex gap-1 shrink-0">
                      <Button variant="outline" size="icon" onClick={() => handleNavigate(-1)}>
                         <ChevronLeft className="w-4 h-4" />
                      </Button>
                      <Button variant="outline" size="icon" onClick={() => handleNavigate(1)}>
                         <ChevronRight className="w-4 h-4" />
                      </Button>
-                     <Button variant="outline" size="sm" onClick={() => setCurrentDate(new Date())}>Today</Button>
+                     <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => setCurrentDate(new Date())}>Today</Button>
                   </div>
-                  <h2 className="text-xl font-bold">
+                  <h2 className="text-lg md:text-xl font-bold truncate">
                      {viewMode === 'month' && currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
-                     {viewMode === 'day' && currentDate.toLocaleString('default', { weekday: 'long', month: 'long', day: 'numeric' })}
+                     {viewMode === 'day' && currentDate.toLocaleString('default', { weekday: 'short', day: 'numeric' })}
                      {viewMode === 'week' && (() => {
                         const days = getWeekDays(currentDate);
                         return `${days[0].toLocaleDateString('default', { month: 'short', day: 'numeric' })} - ${days[6].toLocaleDateString('default', { month: 'short', day: 'numeric' })}`
@@ -418,10 +455,10 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                   </h2>
                </div>
                
-               <div className="flex bg-secondary/50 rounded-lg p-1">
-                  <button onClick={() => setViewMode('month')} className={cn("px-3 py-1 text-xs font-bold rounded-md transition-all", viewMode === 'month' && "bg-background shadow text-primary")}>Month</button>
-                  <button onClick={() => setViewMode('week')} className={cn("px-3 py-1 text-xs font-bold rounded-md transition-all", viewMode === 'week' && "bg-background shadow text-primary")}>Week</button>
-                  <button onClick={() => setViewMode('day')} className={cn("px-3 py-1 text-xs font-bold rounded-md transition-all", viewMode === 'day' && "bg-background shadow text-primary")}>Day</button>
+               <div className="flex bg-secondary/50 rounded-lg p-1 shrink-0">
+                  <button onClick={() => setViewMode('month')} className={cn("px-2 md:px-3 py-1 text-xs font-bold rounded-md transition-all", viewMode === 'month' && "bg-background shadow text-primary")}>M</button>
+                  <button onClick={() => setViewMode('week')} className={cn("px-2 md:px-3 py-1 text-xs font-bold rounded-md transition-all", viewMode === 'week' && "bg-background shadow text-primary")}>W</button>
+                  <button onClick={() => setViewMode('day')} className={cn("px-2 md:px-3 py-1 text-xs font-bold rounded-md transition-all", viewMode === 'day' && "bg-background shadow text-primary")}>D</button>
                </div>
             </div>
 
@@ -437,6 +474,7 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                      onRemovePlayer={handleRemovePlayerFromSession}
                      onEdit={setEditingSession}
                      onCreate={handleCreateSession}
+                     onDragSession={setDraggedSessionId}
                   />
                )}
                {viewMode === 'month' && (
@@ -456,6 +494,7 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                      onRemovePlayer={handleRemovePlayerFromSession}
                      onEdit={setEditingSession}
                      onCreate={handleCreateSession}
+                     onDragSession={setDraggedSessionId}
                   />
                )}
             </div>
@@ -465,16 +504,16 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
 }
 
 // --- Week View Component ---
-function WeekView({ currentDate, events, onDrop, location, weekDays, onRemovePlayer, onEdit, onCreate }: any) {
+function WeekView({ currentDate, events, onDrop, location, weekDays, onRemovePlayer, onEdit, onCreate, onDragSession }: any) {
    const hours = ['13:00', '14:00', '15:00', '16:00', '17:00', '18:00']; 
 
    return (
-      <div className="min-w-[800px] h-full flex flex-col">
+      <div className="min-w-[640px] h-full flex flex-col">
          {/* Header Row */}
-         <div className="flex border-b border-border/50 bg-background/50 sticky top-0 z-10">
-            <div className="w-16 shrink-0 border-r border-border/50" />
+         <div className="grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 bg-background/50 sticky top-0 z-10">
+            <div className="border-r border-border/50 bg-card/30" />
             {weekDays.map((day: Date, i: number) => (
-               <div key={i} className={cn("flex-1 py-3 text-center border-r border-border/50", day.toDateString() === new Date().toDateString() && "bg-primary/5")}>
+               <div key={i} className={cn("py-3 text-center border-r border-border/50 last:border-0", day.toDateString() === new Date().toDateString() && "bg-primary/5")}>
                   <div className="text-[10px] font-bold text-muted-foreground uppercase">{day.toLocaleDateString('en-US', { weekday: 'short' })}</div>
                   <div className={cn("text-lg font-black", day.toDateString() === new Date().toDateString() ? "text-primary" : "text-foreground")}>{day.getDate()}</div>
                </div>
@@ -484,8 +523,8 @@ function WeekView({ currentDate, events, onDrop, location, weekDays, onRemovePla
          {/* Time Grid */}
          <div className="flex-1">
             {hours.map(time => (
-               <div key={time} className="flex h-32 border-b border-border/50">
-                  <div className="w-16 shrink-0 border-r border-border/50 flex justify-center pt-2">
+               <div key={time} className="grid grid-cols-[4rem_repeat(7,1fr)] h-32 border-b border-border/50">
+                  <div className="border-r border-border/50 flex justify-center pt-2 bg-card/10">
                      <span className="text-xs font-mono text-muted-foreground">{time}</span>
                   </div>
                   {weekDays.map((day: Date, i: number) => {
@@ -499,28 +538,32 @@ function WeekView({ currentDate, events, onDrop, location, weekDays, onRemovePla
                      return (
                         <div 
                            key={i} 
-                           className="flex-1 border-r border-border/50 p-1 relative transition-colors hover:bg-primary/5"
+                           className="border-r border-border/50 last:border-0 p-1 relative transition-colors hover:bg-primary/5"
                            onDragOver={e => e.preventDefault()}
                            onDrop={e => onDrop(e, day, time)}
                         >
                            {session ? (
-                              <div className="h-full bg-card/50 border border-border rounded-lg p-2 shadow-sm animate-in zoom-in duration-200">
-                                 <div className="flex justify-between items-start mb-2">
-                                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{session.type}</span>
-                                    <button onClick={() => onEdit(session)} className="text-xs hover:text-primary"><Edit2 className="w-3 h-3"/></button>
+                              <div 
+                                 draggable
+                                 onDragStart={() => onDragSession(session.id)}
+                                 className="h-full bg-card/50 border border-border rounded-lg p-2 shadow-sm animate-in zoom-in duration-200 cursor-grab active:cursor-grabbing hover:border-primary/50 overflow-hidden"
+                              >
+                                 <div className="flex justify-between items-start mb-1">
+                                    <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground">{session.type}</span>
+                                    <button onClick={() => onEdit(session)} className="text-[10px] hover:text-primary shrink-0"><Edit2 className="w-2.5 h-3"/></button>
                                  </div>
-                                 <div className="space-y-1">
+                                 <div className="space-y-0.5">
                                     {session.participants.map((p: any) => (
-                                       <div key={p.id} className="flex items-center justify-between group/p text-xs">
-                                          <div className="flex items-center gap-1.5">
-                                             <div className="w-4 h-4 rounded-full text-[8px] flex items-center justify-center font-bold text-white" style={{ backgroundColor: p.avatar }}>{p.name.substring(0,1)}</div>
-                                             <span>{p.name}</span>
+                                       <div key={p.id} className="flex items-center justify-between group/p text-[9px] leading-tight">
+                                          <div className="flex items-center gap-1 min-w-0">
+                                             <div className="w-3.5 h-3.5 rounded-full text-[7px] flex items-center justify-center font-bold text-white shrink-0" style={{ backgroundColor: p.avatar }}>{p.name.substring(0,1)}</div>
+                                             <span className="truncate">{p.name}</span>
                                           </div>
                                           <button 
                                              onClick={(e) => { e.stopPropagation(); onRemovePlayer(session.id, p.id); }}
-                                             className="text-red-500 opacity-0 group-hover/p:opacity-100"
+                                             className="text-red-500 opacity-0 group-hover/p:opacity-100 shrink-0"
                                           >
-                                             <X className="w-3 h-3" />
+                                             <X className="w-2.5 h-2.5" />
                                           </button>
                                        </div>
                                     ))}
@@ -582,7 +625,7 @@ function MonthView({ currentDate, events, location, onEdit }: any) {
 }
 
 // --- Day View Component ---
-function DayView({ currentDate, events, onDrop, location, onRemovePlayer, onEdit, onCreate }: any) {
+function DayView({ currentDate, events, onDrop, location, onRemovePlayer, onEdit, onCreate, onDragSession }: any) {
    const hours = ['13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
    const daySessions = events.filter((e: any) => e.dateObj.toDateString() === currentDate.toDateString() && e.location === location);
 
@@ -604,8 +647,10 @@ function DayView({ currentDate, events, onDrop, location, onRemovePlayer, onEdit
                      <div className="flex-1 p-2 relative hover:bg-primary/5 transition-colors">
                         {session ? (
                            <div 
+                              draggable
+                              onDragStart={() => onDragSession(session.id)}
                               onClick={() => onEdit(session)}
-                              className="h-full bg-card border border-border rounded-lg p-3 shadow-sm cursor-pointer hover:border-primary/50"
+                              className="h-full bg-card border border-border rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-primary/50"
                            >
                               <div className="flex justify-between mb-2">
                                  <div className="font-bold text-sm">{session.type} Session</div>
@@ -1047,7 +1092,7 @@ function BookingsWorkspace({ clients, players, sessions }: { clients: Client[], 
                </table>
 
                <div style="margin-top:50px; font-size:11px; text-align:center; color:#999;">
-                  Generated by SessionPro • Tennis Lab Academy
+                  Generated by SessionPro • Von Gericke Tennis Academy
                </div>
                
                <script>window.print();</script>
@@ -1155,7 +1200,7 @@ function NavTab({ id, label, icon, active, onClick }: { id: Tab, label: string, 
       <button
          onClick={() => onClick(id)}
          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
+            "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all shrink-0",
             isActive 
                ? "bg-background shadow-lg text-primary ring-1 ring-black/5 dark:ring-white/10 scale-105" 
                : "text-muted-foreground hover:text-foreground hover:bg-background/50"

@@ -1,32 +1,31 @@
 import React, { useMemo, useState } from 'react';
-import { Player } from '@/lib/playbook';
+import { Player, TrainingSession } from '@/lib/playbook';
 import { calculateDashboardStats, getRevenueChartData, getHeatmapData, getClientHealth } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
 import { Activity, TrendingUp, TrendingDown, Users, Calendar, AlertTriangle, CheckCircle, BarChart3, PieChart, Clock, Zap, Heart } from 'lucide-react';
 
 interface InsightsDashboardProps {
   players: Player[];
+  sessions: TrainingSession[];
 }
 
-export function InsightsDashboard({ players }: InsightsDashboardProps) {
+export function InsightsDashboard({ players, sessions }: InsightsDashboardProps) {
   const [chartPeriod, setChartPeriod] = useState<'week'|'month'|'year'>('month');
   
-  const stats = useMemo(() => calculateDashboardStats(players), [players]);
-  const chartData = useMemo(() => getRevenueChartData(players, chartPeriod), [players, chartPeriod]);
-  const heatmapData = useMemo(() => getHeatmapData(players), [players]);
-  const clientHealth = useMemo(() => getClientHealth(players), [players]);
+  const stats = useMemo(() => calculateDashboardStats(players, sessions), [players, sessions]);
+  const chartData = useMemo(() => getRevenueChartData(sessions, chartPeriod), [sessions, chartPeriod]);
+  const heatmapData = useMemo(() => getHeatmapData(sessions), [sessions]);
+  const clientHealth = useMemo(() => getClientHealth(players, sessions), [players, sessions]);
   
   const sessionBreakdown = useMemo(() => {
      const counts = { Private: 0, Semi: 0, Group: 0 };
-     players.forEach(p => {
-        p.schedule?.forEach(s => {
-           const type = s.sessionType === 'Private' ? 'Private' : s.sessionType === 'Semi' ? 'Semi' : 'Group';
-           counts[type] = (counts[type] || 0) + 1;
-        });
+     sessions.forEach(s => {
+        const type = s.type === 'Private' ? 'Private' : s.type === 'Semi' ? 'Semi' : 'Group';
+        counts[type] = (counts[type] || 0) + 1;
      });
-     const total = Object.values(counts).reduce((a,b) => a+b, 0) || 1;
+     const total = sessions.length || 1;
      return { counts, total };
-  }, [players]);
+  }, [sessions]);
 
   return (
     <div className="p-6 space-y-8 animate-in fade-in duration-500 pb-20 overflow-y-auto h-full custom-scrollbar">
