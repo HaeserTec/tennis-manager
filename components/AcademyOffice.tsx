@@ -662,12 +662,12 @@ function generateSmartBlocks(startHour: number, endHour: number, events: any[], 
          
          // Incremental Height Scaling based on Player Count
          const maxCap = activeCapacities.get(h) || 1;
-         let rowHeight = 'h-24'; // Default (1 player)
+         let rowHeight = 'h-18'; // Default (1 player)
          
-         if (maxCap === 2) rowHeight = 'h-32';
-         else if (maxCap === 3) rowHeight = 'h-40';
-         else if (maxCap === 4) rowHeight = 'h-48';
-         else if (maxCap >= 5) rowHeight = 'h-56';
+         if (maxCap === 2) rowHeight = 'h-22';
+         else if (maxCap === 3) rowHeight = 'h-30';
+         else if (maxCap === 4) rowHeight = 'h-38';
+         else if (maxCap >= 5) rowHeight = 'h-42';
          
          blocks.push({ type: 'active', hour: h, rowHeight });
       } else {
