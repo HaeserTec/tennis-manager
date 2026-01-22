@@ -373,3 +373,74 @@ export function getClientHealth(players: Player[], sessions: TrainingSession[]) 
       };
    }).sort((a,b) => a.healthScore - b.healthScore);
 }
+
+export function calculateAttendanceStreak(playerId: string, sessions: TrainingSession[]): number {
+  const now = new Date();
+  
+  // 1. Get past sessions for player
+  const attendedDates = sessions
+    .filter(s => 
+      s.participantIds.includes(playerId) && 
+      new Date(s.date + 'T' + s.startTime) < now
+    )
+    .map(s => new Date(s.date));
+
+  if (attendedDates.length === 0) return 0;
+
+  // 2. Get unique weeks (Monday timestamps)
+  const getMonday = (d: Date) => {
+    const t = new Date(d);
+    const day = t.getDay();
+    const diff = t.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+    t.setDate(diff);
+    t.setHours(0,0,0,0);
+    return t.getTime();
+  };
+
+  const attendedWeeks = new Set(attendedDates.map(d => getMonday(d)));
+  
+  // 3. Count backwards
+  let currentMonday = getMonday(now);
+  let streak = 0;
+  
+  // Check current week
+  if (attendedWeeks.has(currentMonday)) {
+     streak++;
+  }
+  
+  // Check previous weeks
+  // If we didn't match current week, we start checking from last week.
+  // But if we DID match current week, we ALSO continue to last week.
+  // Actually, loop should just decrement.
+  
+  // However, if we missed current week (e.g. it's Tuesday and we play Thursday), 
+  // but played last week, streak should be valid?
+  // User Requirement: "sessions in the past until exactly now".
+  // If I played last week, and haven't played yet this week, is my streak 0?
+  // Usually apps say "Streak: 5 weeks" even if you haven't played THIS week yet, until the week is over.
+  // But to be strict: 
+  
+  // Revised Logic:
+  // Iterate backwards from Current Week.
+  // If has(CurrentWeek) -> streak++, continue.
+  // If !has(CurrentWeek) -> check LastWeek.
+  //    If has(LastWeek) -> streak++, continue from LastWeek.
+  //    If !has(LastWeek) -> streak = 0.
+  
+  // Implementation:
+  // Try Current Week
+  if (!attendedWeeks.has(currentMonday)) {
+     // If not present this week, move pointer to last week.
+     // If last week is also missing, return 0.
+     currentMonday -= 7 * 24 * 60 * 60 * 1000;
+     if (!attendedWeeks.has(currentMonday)) return 0;
+  }
+  
+  // Now we are at a "Hit".
+  while (attendedWeeks.has(currentMonday)) {
+     streak++;
+     currentMonday -= 7 * 24 * 60 * 60 * 1000;
+  }
+  
+  return streak;
+}

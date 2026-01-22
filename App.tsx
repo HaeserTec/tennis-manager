@@ -1099,6 +1099,7 @@ export default function App() {
              <Scoreboard 
                 players={players}
                 logs={logs}
+                sessions={sessions}
                 onUpsertLog={upsertLog}
                 onNavigateHome={handleGoHome}
              />
