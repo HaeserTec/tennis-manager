@@ -586,7 +586,7 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                {viewMode === 'week' && (
                   <WeekView 
                      currentDate={currentDate} 
-                     events={events.filter((e: any) => e.participantIds.length > 0)} // Hide cancelled
+                     events={events} // Hide cancelled
                      onDrop={handleDrop}
                      location={selectedLocation}
                      weekDays={getWeekDays(currentDate)}
@@ -601,7 +601,7 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                {viewMode === 'month' && (
                   <MonthView 
                      currentDate={currentDate} 
-                     events={events.filter((e: any) => e.participantIds.length > 0)}
+                     events={events}
                      location={selectedLocation}
                      onEdit={setEditingSession}
                   />
@@ -609,7 +609,7 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                {viewMode === 'day' && (
                   <DayView 
                      currentDate={currentDate} 
-                     events={events.filter((e: any) => e.participantIds.length > 0)}
+                     events={events}
                      onDrop={handleDrop}
                      location={selectedLocation}
                      onRemovePlayer={handleRemovePlayerFromSession}
