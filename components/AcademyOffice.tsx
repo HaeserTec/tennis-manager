@@ -480,7 +480,7 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                      <label className="text-[9px] font-bold text-muted-foreground uppercase">Start</label>
                      <Select value={String(viewStartHour)} onValueChange={v => setViewStartHour(Number(v))}>
                         <SelectTrigger className="h-8 text-xs bg-card border-border"><SelectValue /></SelectTrigger>
-                        <SelectContent className="max-h-40">
+                        <SelectContent className="max-h-40 overflow-y-auto custom-scrollbar">
                            {Array.from({length: 24}).map((_, i) => <SelectItem key={i} value={String(i)}>{i}:00</SelectItem>)}
                         </SelectContent>
                      </Select>
@@ -489,7 +489,7 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                      <label className="text-[9px] font-bold text-muted-foreground uppercase">End</label>
                      <Select value={String(viewEndHour)} onValueChange={v => setViewEndHour(Number(v))}>
                         <SelectTrigger className="h-8 text-xs bg-card border-border"><SelectValue /></SelectTrigger>
-                        <SelectContent className="max-h-40">
+                        <SelectContent className="max-h-40 overflow-y-auto custom-scrollbar">
                            {Array.from({length: 24}).map((_, i) => <SelectItem key={i} value={String(i)} disabled={i <= viewStartHour}>{i}:00</SelectItem>)}
                         </SelectContent>
                      </Select>
@@ -657,9 +657,9 @@ function generateSmartBlocks(startHour: number, endHour: number, events: any[], 
             blocks.push({ type: 'gap', start: currentGapStart, end: h });
             currentGapStart = -1;
          }
-         // Dynamic Height: Private (1) = h-24, Group (2+) = h-32
+         // Dynamic Height: Private (1) = h-20 (Compact), Group (2+) = h-48 (Spacious)
          const maxCap = activeCapacities.get(h) || 1;
-         const rowHeight = maxCap > 1 ? 'h-36' : 'h-24';
+         const rowHeight = maxCap > 1 ? 'h-48' : 'h-20';
          
          blocks.push({ type: 'active', hour: h, rowHeight });
       } else {
