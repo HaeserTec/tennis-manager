@@ -217,9 +217,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         await syncTable('session_logs', logs, setLogs);
 
         console.log('--- SYNC COMPLETE ---');
-        alert("Sync Completed Successfully!"); 
     } catch (err: any) {
-        alert(`Global Sync Failed: ${err.message}`);
+        console.error(`Global Sync Failed: ${err.message}`);
     }
   }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms]);
 
