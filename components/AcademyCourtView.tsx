@@ -222,10 +222,10 @@ export function AcademyCourtView({ players, onSelectPlayer, onUpdatePlayerPos }:
   };
 
   return (
-        <div ref={containerRef} className="relative w-full h-full flex items-center justify-center bg-background overflow-hidden group">
+        <div className="relative w-full h-full flex items-center justify-center bg-background overflow-hidden group">
           {/* Court Diagram */}
           <svg
-            viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}        className="w-full h-full max-h-[85vh] transition-transform duration-1000 ease-out touch-none"
+            viewBox={`0 0 ${BASE_WIDTH} ${BASE_HEIGHT}`}        className="w-full h-full max-h-[85vh] transition-transform duration-1000 ease-out touch-none"
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
