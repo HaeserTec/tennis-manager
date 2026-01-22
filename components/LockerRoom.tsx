@@ -625,18 +625,6 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
                            <PBMetric label="Attendance Streak" unit="sessions" value={player.pbs?.attendanceStreak} onChange={v => handleNestedUpdate('pbs', 'attendanceStreak', parseInt(v))} icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11"></polyline></svg>} />
                         </div>
                      </Section>
-                     <Section title="Attendance Heatmap">
-                        <div className="p-6 rounded-3xl border border-border bg-card/20 space-y-6">
-                           <div className="flex items-center justify-between">
-                              <div className="flex flex-wrap gap-1.5">{Array.from({ length: 28 }).map((_, i) => {
-                                 const date = new Date(); date.setDate(date.getDate() - (27 - i));
-                                 const isAttended = player.attendance?.some((ts: number) => new Date(ts).toDateString() === date.toDateString());
-                                 return <div key={i} className={cn("h-5 w-5 rounded-md", isAttended ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" : "bg-secondary")} title={date.toDateString()} />;
-                              })}</div>
-                              <Button size="sm" onClick={handleCheckIn} className="bg-emerald-500 hover:bg-emerald-600 text-white font-black text-[10px] tracking-widest h-10 px-6 rounded-xl">CHECK-IN</Button>
-                           </div>
-                        </div>
-                     </Section>
                      <Section title="Technical Growth">
                         <textarea className="w-full h-32 bg-card/30 border border-border rounded-2xl p-5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none leading-relaxed text-foreground no-scrollbar" placeholder="Technical progression notes..." value={player.analysisNotes || ''} onChange={e => onUpdate({...player, analysisNotes: e.target.value})} />
                      </Section>
