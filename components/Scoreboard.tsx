@@ -64,17 +64,27 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
         .filter(p => p.account?.status !== 'Inactive')
         .map(p => {
            const streak = calculateAttendanceStreak(p.id, sessions);
-           const total = (p.stats.tech + p.stats.consistency + p.stats.tactics + p.stats.movement) / 4;
            return {
               ...p,
               streak,
-              total: Math.round(total)
+              // Map PB stats for sorting/display
+              backToBase: p.pbs?.backToBase ? Number(p.pbs.backToBase) : 0,
+              longestRally: p.pbs?.longestRally || 0,
+              firstServe: p.pbs?.firstServePct || 0
            };
         })
         .sort((a, b) => {
-           const aVal = sortConfig.key === 'name' ? a.name : sortConfig.key === 'streak' ? a.streak : (a as any).stats[sortConfig.key] || (a as any)[sortConfig.key] || 0;
-           const bVal = sortConfig.key === 'name' ? b.name : sortConfig.key === 'streak' ? b.streak : (b as any).stats[sortConfig.key] || (b as any)[sortConfig.key] || 0;
+           const key = sortConfig.key;
+           const aVal = key === 'name' ? a.name : (a as any)[key] || 0;
+           const bVal = key === 'name' ? b.name : (b as any)[key] || 0;
            
+           // Special handling for Back to Base (Lower is better)
+           if (key === 'backToBase') {
+              if (aVal === 0) return 1; // Treat 0 (no data) as worst
+              if (bVal === 0) return -1;
+              return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
+           }
+
            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
            return 0;
@@ -167,15 +177,14 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                <div className="max-w-5xl mx-auto">
                   <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
                      {/* Table Header */}
-                     <div className="grid grid-cols-[3rem_2fr_1fr_1fr_1fr_1fr_1fr] md:grid-cols-[4rem_2fr_repeat(5,1fr)] bg-secondary/30 border-b border-border text-[10px] font-black uppercase tracking-widest text-muted-foreground sticky top-0 backdrop-blur-md z-10">
+                     <div className="grid grid-cols-[3rem_2fr_1fr_1fr_1fr_1fr] md:grid-cols-[4rem_2fr_repeat(4,1fr)] bg-secondary/30 border-b border-border text-[10px] font-black uppercase tracking-widest text-muted-foreground sticky top-0 backdrop-blur-md z-10">
                         <div className="p-4 text-center">#</div>
                         <div className="p-4 cursor-pointer hover:text-foreground flex items-center gap-1" onClick={() => handleSort('name')}>
                            Player <ArrowUpDown className="w-3 h-3" />
                         </div>
-                        <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('tech')}>Tech</div>
-                        <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('tactics')}>Tact</div>
-                        <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('movement')}>Move</div>
-                        <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('consistency')}>Cons</div>
+                        <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('backToBase')}>Base Speed</div>
+                        <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('longestRally')}>Rally</div>
+                        <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('firstServe')}>Serve %</div>
                         <div className="p-4 text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-1" onClick={() => handleSort('streak')}>
                            <Flame className="w-3 h-3 text-orange-500" /> Streak
                         </div>
@@ -184,7 +193,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                      {/* Table Body */}
                      <div className="divide-y divide-border/50">
                         {leaderboardData.map((player, idx) => (
-                           <div key={player.id} className="grid grid-cols-[3rem_2fr_1fr_1fr_1fr_1fr_1fr] md:grid-cols-[4rem_2fr_repeat(5,1fr)] hover:bg-white/5 transition-colors group items-center">
+                           <div key={player.id} className="grid grid-cols-[3rem_2fr_1fr_1fr_1fr_1fr] md:grid-cols-[4rem_2fr_repeat(4,1fr)] hover:bg-white/5 transition-colors group items-center">
                               <div className="p-4 text-center font-black text-muted-foreground flex justify-center">
                                  {idx === 0 ? <Medal className="w-5 h-5 text-yellow-400" /> : 
                                   idx === 1 ? <Medal className="w-5 h-5 text-slate-400" /> : 
@@ -199,10 +208,15 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                               </div>
                               
                               {/* Stats Columns */}
-                              <div className="p-4 text-center font-mono font-bold text-sm hidden md:block">{player.stats.tech}</div>
-                              <div className="p-4 text-center font-mono font-bold text-sm hidden md:block">{player.stats.tactics}</div>
-                              <div className="p-4 text-center font-mono font-bold text-sm hidden md:block">{player.stats.movement}</div>
-                              <div className="p-4 text-center font-mono font-bold text-sm hidden md:block">{player.stats.consistency}</div>
+                              <div className="p-4 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground">
+                                 {player.backToBase > 0 ? `${player.backToBase}s` : '-'}
+                              </div>
+                              <div className="p-4 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground">
+                                 {player.longestRally > 0 ? player.longestRally : '-'}
+                              </div>
+                              <div className="p-4 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground">
+                                 {player.firstServe > 0 ? `${player.firstServe}%` : '-'}
+                              </div>
                               
                               <div className="p-4 text-center font-black text-orange-500 flex justify-center items-center gap-1">
                                  {player.streak} <span className="text-[10px] text-muted-foreground font-medium uppercase">Wks</span>
