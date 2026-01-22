@@ -657,9 +657,9 @@ function generateSmartBlocks(startHour: number, endHour: number, events: any[], 
             blocks.push({ type: 'gap', start: currentGapStart, end: h });
             currentGapStart = -1;
          }
-         // Dynamic Height: Private (1) = h-20 (Compact), Group (2+) = h-48 (Spacious)
+         // Dynamic Height: Private/Semi (1-2) = h-28 (Compact), Group (3+) = h-48 (Spacious)
          const maxCap = activeCapacities.get(h) || 1;
-         const rowHeight = maxCap > 1 ? 'h-48' : 'h-20';
+         const rowHeight = maxCap > 2 ? 'h-48' : 'h-28';
          
          blocks.push({ type: 'active', hour: h, rowHeight });
       } else {
