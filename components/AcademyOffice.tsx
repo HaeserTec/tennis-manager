@@ -659,9 +659,15 @@ function generateSmartBlocks(startHour: number, endHour: number, events: any[], 
             blocks.push({ type: 'gap', start: currentGapStart, end: h });
             currentGapStart = -1;
          }
-         // Dynamic Height: Private/Semi (1-2) = h-28 (Compact), Group (3+) = h-48 (Spacious)
+         
+         // Incremental Height Scaling based on Player Count
          const maxCap = activeCapacities.get(h) || 1;
-         const rowHeight = maxCap > 2 ? 'h-48' : 'h-28';
+         let rowHeight = 'h-24'; // Default (1 player)
+         
+         if (maxCap === 2) rowHeight = 'h-32';
+         else if (maxCap === 3) rowHeight = 'h-40';
+         else if (maxCap === 4) rowHeight = 'h-48';
+         else if (maxCap >= 5) rowHeight = 'h-56';
          
          blocks.push({ type: 'active', hour: h, rowHeight });
       } else {
