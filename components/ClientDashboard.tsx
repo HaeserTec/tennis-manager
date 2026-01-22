@@ -20,7 +20,9 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
   // Derived Data
-  const myPlayers = players.filter(p => p.clientId === client.id);
+  const myPlayers = players
+    .filter(p => p.clientId === client.id)
+    .sort((a, b) => a.name.localeCompare(b.name));
   
   const upcomingSessions = sessions
     .filter(s => 

@@ -71,7 +71,9 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
 
   const filteredPlayers = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return players.filter(p => p.name.toLowerCase().includes(q));
+    return players
+      .filter(p => p.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [players, searchQuery]);
 
   const handleOpenAddModal = () => {

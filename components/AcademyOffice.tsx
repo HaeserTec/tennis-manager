@@ -104,6 +104,10 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
    // Edit Modal State
    const [editingSession, setEditingSession] = useState<TrainingSession | null>(null);
 
+   const sortedPlayers = useMemo(() => 
+      [...players].sort((a, b) => a.name.localeCompare(b.name)), 
+   [players]);
+
    // Calendar Utilities
    const getWeekDays = (date: Date) => {
       const start = new Date(date);
@@ -354,7 +358,7 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
                            <Select onValueChange={handleAddParticipant}>
                               <SelectTrigger className="h-7 w-[140px] text-[10px] bg-background border-border"><SelectValue placeholder="+ Add Player" /></SelectTrigger>
                               <SelectContent className="max-h-[200px] overflow-y-auto custom-scrollbar">
-                                 {players
+                                 {sortedPlayers
                                     .filter(p => !editingSession.participantIds.includes(p.id))
                                     .map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)
                                  }
@@ -518,7 +522,7 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
             <div className="flex-1 flex flex-col min-h-0">
                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Drag to Schedule</label>
                <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                  {players.map(p => (
+                  {sortedPlayers.map(p => (
                      <div 
                         key={p.id}
                         draggable
