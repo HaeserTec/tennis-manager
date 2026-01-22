@@ -352,7 +352,7 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Roster ({editingSession.participantIds.length})</label>
                            <Select onValueChange={handleAddParticipant}>
                               <SelectTrigger className="h-7 w-[140px] text-[10px] bg-background border-border"><SelectValue placeholder="+ Add Player" /></SelectTrigger>
-                              <SelectContent>
+                              <SelectContent className="max-h-[200px] overflow-y-auto custom-scrollbar">
                                  {players
                                     .filter(p => !editingSession.participantIds.includes(p.id))
                                     .map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)
