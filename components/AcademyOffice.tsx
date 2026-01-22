@@ -626,9 +626,55 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
    );
 }
 
-// --- Week View Component ---
-function WeekView({ currentDate, events, onDrop, location, weekDays, onRemovePlayer, onEdit, onCreate, onDragSession, startHour = 13, endHour = 19 }: any) {
-   const hours = useMemo(() => Array.from({ length: endHour - startHour }, (_, i) => `${startHour + i}:00`), [startHour, endHour]);
+type ScheduleBlock =
+  | { type: 'active'; hour: number; rowHeight: string }
+  | { type: 'gap'; start: number; end: number };
+
+function generateSmartBlocks(startHour: number, endHour: number, events: any[], days: Date[]): ScheduleBlock[] {
+   const activeHours = new Set<number>();
+   const activeCapacities = new Map<number, number>();
+
+   // Scan for active sessions
+   events.forEach((e: any) => {
+      const h = parseInt(e.startTime.split(':')[0]);
+      if (h >= startHour && h < endHour) {
+         // Check if this event falls on one of the days we are viewing
+         const eventDate = e.dateObj.toDateString();
+         if (days.some(d => d.toDateString() === eventDate)) {
+            activeHours.add(h);
+            const currentMax = activeCapacities.get(h) || 0;
+            activeCapacities.set(h, Math.max(currentMax, e.maxCapacity || 1));
+         }
+      }
+   });
+
+   const blocks: ScheduleBlock[] = [];
+   let currentGapStart = -1;
+
+   for (let h = startHour; h < endHour; h++) {
+      if (activeHours.has(h)) {
+         if (currentGapStart !== -1) {
+            blocks.push({ type: 'gap', start: currentGapStart, end: h });
+            currentGapStart = -1;
+         }
+         // Dynamic Height: Private (1) = h-24, Group (2+) = h-32
+         const maxCap = activeCapacities.get(h) || 1;
+         const rowHeight = maxCap > 1 ? 'h-36' : 'h-24';
+         
+         blocks.push({ type: 'active', hour: h, rowHeight });
+      } else {
+         if (currentGapStart === -1) currentGapStart = h;
+      }
+   }
+   if (currentGapStart !== -1) {
+      blocks.push({ type: 'gap', start: currentGapStart, end: endHour });
+   }
+
+   return blocks;
+}
+
+function WeekView({ currentDate, events, onDrop, location, weekDays, onRemovePlayer, onEdit, onCreate, onDragSession, startHour = 6, endHour = 22 }: any) {
+   const blocks = useMemo(() => generateSmartBlocks(startHour, endHour, events, weekDays), [startHour, endHour, events, weekDays]);
 
    return (
       <div className="min-w-[640px] h-full flex flex-col">
@@ -644,67 +690,84 @@ function WeekView({ currentDate, events, onDrop, location, weekDays, onRemovePla
          </div>
 
          {/* Time Grid */}
-         <div className="flex-1">
-            {hours.map(time => (
-               <div key={time} className="grid grid-cols-[4rem_repeat(7,1fr)] h-32 border-b border-border/50">
-                  <div className="border-r border-border/50 flex justify-center pt-2 bg-card/10">
-                     <span className="text-xs font-mono text-muted-foreground">{time}</span>
-                  </div>
-                  {weekDays.map((day: Date, i: number) => {
-                     // Find session for this slot
-                     const session = events.find((e: any) => 
-                        e.dateObj.toDateString() === day.toDateString() && 
-                        e.startTime === time &&
-                        e.location === location
-                     );
-                     
-                     return (
-                        <div 
-                           key={i} 
-                           className="border-r border-border/50 last:border-0 p-1 relative transition-colors hover:bg-primary/5"
-                           onDragOver={e => e.preventDefault()}
-                           onDrop={e => onDrop(e, day, time)}
-                        >
-                           {session ? (
-                              <div 
-                                 draggable
-                                 onDragStart={() => onDragSession(session.id)}
-                                 className="h-full bg-card/50 border border-border rounded-lg p-2 shadow-sm animate-in zoom-in duration-200 cursor-grab active:cursor-grabbing hover:border-primary/50 overflow-hidden"
-                              >
-                                 <div className="flex justify-between items-start mb-1">
-                                    <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground">{session.type}</span>
-                                    <button onClick={() => onEdit(session)} className="text-[10px] hover:text-primary shrink-0"><Edit2 className="w-2.5 h-3"/></button>
-                                 </div>
-                                 <div className="space-y-0.5">
-                                    {session.participants.map((p: any) => (
-                                       <div key={p.id} className="flex items-center justify-between group/p text-[9px] leading-tight">
-                                          <div className="flex items-center gap-1 min-w-0">
-                                             <div className="w-3.5 h-3.5 rounded-full text-[7px] flex items-center justify-center font-bold text-white shrink-0" style={{ backgroundColor: p.avatar }}>{p.name.substring(0,1)}</div>
-                                             <span className="truncate">{p.name}</span>
-                                          </div>
-                                          <button 
-                                             onClick={(e) => { e.stopPropagation(); onRemovePlayer(session.id, p.id); }}
-                                             className="text-red-500 opacity-0 group-hover/p:opacity-100 shrink-0"
-                                          >
-                                             <X className="w-2.5 h-2.5" />
-                                          </button>
+         <div className="flex-1 overflow-y-auto">
+            {blocks.map((block, bIdx) => {
+               if (block.type === 'gap') {
+                  return (
+                     <div key={`gap-${bIdx}`} className="h-8 bg-secondary/30 border-b border-border/50 flex items-center justify-center">
+                        <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest opacity-70">
+                           Free Time • {block.start}:00 - {block.end}:00
+                        </span>
+                     </div>
+                  );
+               }
+
+               const time = `${block.hour}:00`;
+               
+               return (
+                  <div key={time} className={cn("grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 transition-all", block.rowHeight)}>
+                     <div className="border-r border-border/50 flex justify-center pt-2 bg-card/10">
+                        <span className="text-xs font-mono text-muted-foreground">{time}</span>
+                     </div>
+                     {weekDays.map((day: Date, i: number) => {
+                        // Fuzzy match time (e.g. 08:30 matches 08:00 slot)
+                        const session = events.find((e: any) => 
+                           e.dateObj.toDateString() === day.toDateString() && 
+                           parseInt(e.startTime.split(':')[0]) === block.hour &&
+                           e.location === location
+                        );
+                        
+                        return (
+                           <div 
+                              key={i} 
+                              className="border-r border-border/50 last:border-0 p-1 relative transition-colors hover:bg-primary/5"
+                              onDragOver={e => e.preventDefault()}
+                              onDrop={e => onDrop(e, day, time)}
+                           >
+                              {session ? (
+                                 <div 
+                                    draggable
+                                    onDragStart={() => onDragSession(session.id)}
+                                    className="h-full bg-card/50 border border-border rounded-lg p-2 shadow-sm animate-in zoom-in duration-200 cursor-grab active:cursor-grabbing hover:border-primary/50 overflow-hidden flex flex-col"
+                                 >
+                                    <div className="flex justify-between items-start mb-1 shrink-0">
+                                       <div className="flex flex-col">
+                                          <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground">{session.type}</span>
+                                          <span className="text-[9px] font-mono opacity-50">{session.startTime}</span>
                                        </div>
-                                    ))}
+                                       <button onClick={() => onEdit(session)} className="text-[10px] hover:text-primary shrink-0"><Edit2 className="w-2.5 h-3"/></button>
+                                    </div>
+                                    <div className="space-y-0.5 overflow-y-auto custom-scrollbar flex-1">
+                                       {session.participants.map((p: any) => (
+                                          <div key={p.id} className="flex items-center justify-between group/p text-[9px] leading-tight">
+                                             <div className="flex items-center gap-1 min-w-0">
+                                                <div className="w-3.5 h-3.5 rounded-full text-[7px] flex items-center justify-center font-bold text-white shrink-0" style={{ backgroundColor: p.avatar }}>{p.name.substring(0,1)}</div>
+                                                <span className="truncate">{p.name}</span>
+                                             </div>
+                                             <button 
+                                                onClick={(e) => { e.stopPropagation(); onRemovePlayer(session.id, p.id); }}
+                                                className="text-red-500 opacity-0 group-hover/p:opacity-100 shrink-0"
+                                             >
+                                                <X className="w-2.5 h-2.5" />
+                                             </button>
+                                          </div>
+                                       ))}
+                                    </div>
                                  </div>
-                              </div>
-                           ) : (
-                              <div 
-                                 onClick={() => onCreate(day, time)}
-                                 className="h-full w-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer text-primary/50 hover:bg-card/20 rounded-lg"
-                              >
-                                 <Plus className="w-6 h-6" />
-                              </div>
-                           )}
-                        </div>
-                     )
-                  })}
-               </div>
-            ))}
+                              ) : (
+                                 <div 
+                                    onClick={() => onCreate(day, time)}
+                                    className="h-full w-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer text-primary/50 hover:bg-card/20 rounded-lg"
+                                 >
+                                    <Plus className="w-6 h-6" />
+                                 </div>
+                              )}
+                           </div>
+                        )
+                     })}
+                  </div>
+               );
+            })}
          </div>
       </div>
    );
@@ -748,19 +811,31 @@ function MonthView({ currentDate, events, location, onEdit }: any) {
 }
 
 // --- Day View Component ---
-function DayView({ currentDate, events, onDrop, location, onRemovePlayer, onEdit, onCreate, onDragSession, startHour = 13, endHour = 19 }: any) {
-   const hours = useMemo(() => Array.from({ length: endHour - startHour }, (_, i) => `${startHour + i}:00`), [startHour, endHour]);
+function DayView({ currentDate, events, onDrop, location, onRemovePlayer, onEdit, onCreate, onDragSession, startHour = 6, endHour = 22 }: any) {
+   const blocks = useMemo(() => generateSmartBlocks(startHour, endHour, events, [currentDate]), [startHour, endHour, events, currentDate]);
    const daySessions = events.filter((e: any) => e.dateObj.toDateString() === currentDate.toDateString() && e.location === location);
 
    return (
       <div className="max-w-3xl mx-auto h-full p-4">
          <div className="border border-border rounded-xl bg-card/20 overflow-hidden">
-            {hours.map(time => {
-               const session = daySessions.find((e: any) => e.startTime === time);
+            {blocks.map((block, bIdx) => {
+               if (block.type === 'gap') {
+                  return (
+                     <div key={`gap-${bIdx}`} className="h-8 bg-secondary/30 border-b border-border/50 flex items-center justify-center">
+                        <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest opacity-70">
+                           Free Time • {block.start}:00 - {block.end}:00
+                        </span>
+                     </div>
+                  );
+               }
+
+               const time = `${block.hour}:00`;
+               const session = daySessions.find((e: any) => parseInt(e.startTime.split(':')[0]) === block.hour);
+
                return (
                   <div 
                      key={time} 
-                     className="flex h-32 border-b border-border/50 last:border-0"
+                     className={cn("flex border-b border-border/50 last:border-0", block.rowHeight)}
                      onDragOver={e => e.preventDefault()}
                      onDrop={e => onDrop(e, currentDate, time)}
                   >
@@ -773,15 +848,15 @@ function DayView({ currentDate, events, onDrop, location, onRemovePlayer, onEdit
                               draggable
                               onDragStart={() => onDragSession(session.id)}
                               onClick={() => onEdit(session)}
-                              className="h-full bg-card border border-border rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-primary/50"
+                              className="h-full bg-card border border-border rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-primary/50 flex flex-col"
                            >
-                              <div className="flex justify-between mb-2">
+                              <div className="flex justify-between mb-2 shrink-0">
                                  <div className="font-bold text-sm">{session.type} Session</div>
                                  <div className="text-xs text-muted-foreground">{session.participants.length} / {session.maxCapacity}</div>
                               </div>
-                              <div className="flex gap-2">
+                              <div className="flex gap-2 flex-wrap overflow-y-auto custom-scrollbar flex-1 content-start">
                                  {session.participants.map((p: any) => (
-                                    <div key={p.id} className="flex items-center gap-1.5 bg-secondary px-2 py-1 rounded-full border border-border">
+                                    <div key={p.id} className="flex items-center gap-1.5 bg-secondary px-2 py-1 rounded-full border border-border h-fit">
                                        <div className="w-4 h-4 rounded-full text-[8px] flex items-center justify-center font-bold text-white" style={{ backgroundColor: p.avatar }}>{p.name.substring(0,1)}</div>
                                        <span className="text-xs font-medium">{p.name}</span>
                                        <button 
@@ -804,7 +879,7 @@ function DayView({ currentDate, events, onDrop, location, onRemovePlayer, onEdit
                         )}
                      </div>
                   </div>
-               )
+               );
             })}
          </div>
       </div>
