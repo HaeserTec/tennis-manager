@@ -69,7 +69,13 @@ export const SelectContent = ({ children, className }: any) => {
   // Handle window resize/scroll closing to prevent floating misalignment
   React.useEffect(() => {
     if(!open) return;
-    const handleScroll = () => setOpen(false);
+    const handleScroll = (event: Event) => {
+       // If scrolling inside the dropdown itself, don't close
+       if (contentRef.current && contentRef.current.contains(event.target as Node)) {
+          return;
+       }
+       setOpen(false);
+    };
     window.addEventListener("scroll", handleScroll, { capture: true });
     window.addEventListener("resize", handleScroll);
     return () => {
