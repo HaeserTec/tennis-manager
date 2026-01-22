@@ -103,6 +103,7 @@ interface DataContextType {
 
   upsertClient: (client: Client) => void;
   upsertSession: (session: TrainingSession) => void;
+  deleteSession: (id: string) => void;
   upsertLog: (log: SessionLog) => void;
   forceSync: () => Promise<void>;
 }
@@ -360,6 +361,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
      syncToSupabase('training_sessions', session, 'upsert');
   }, []);
 
+  const deleteSession = useCallback((id: string) => {
+     setSessions(prev => prev.filter(s => s.id !== id));
+     syncToSupabase('training_sessions', { id }, 'delete');
+  }, []);
+
   const upsertLog = useCallback((log: SessionLog) => {
      setLogs(prev => {
         const idx = prev.findIndex(l => l.id === log.id);
@@ -391,7 +397,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addSequence, updateSequence, deleteSequence,
       addPlan, updatePlan, deletePlan,
       addPlayer, updatePlayer, deletePlayer,
-      upsertClient, upsertSession, upsertLog,
+      upsertClient, upsertSession, deleteSession, upsertLog,
       forceSync
     }}>
       {children}

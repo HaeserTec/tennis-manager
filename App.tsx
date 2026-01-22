@@ -119,7 +119,7 @@ export default function App() {
      plans, setPlans, addPlan, updatePlan, deletePlan,
      players, setPlayers, addPlayer, updatePlayer, deletePlayer,
      clients, upsertClient,
-     sessions, upsertSession,
+     sessions, upsertSession, deleteSession,
      locations, setLocations,
      logs, upsertLog,
      terms,
@@ -1092,6 +1092,7 @@ export default function App() {
                 onUpdatePlayer={updatePlayer}
                 onUpsertClient={upsertClient}
                 onUpsertSession={upsertSession} // Pass session handler
+                onDeleteSession={deleteSession}
                 onClose={handleGoHome}
              />
          ) : appMode === 'scoreboard' ? (

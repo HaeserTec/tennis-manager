@@ -24,6 +24,7 @@ interface AcademyOfficeProps {
   onUpdatePlayer: (player: Player) => void;
   onUpsertClient: (client: Client) => void;
   onUpsertSession: (session: TrainingSession) => void;
+  onDeleteSession: (sessionId: string) => void;
   onClose: () => void;
 }
 
@@ -41,7 +42,7 @@ const SESSION_LIMITS = {
    Group: 5
 };
 
-export function AcademyOffice({ players, locations, clients, sessions, onUpdatePlayer, onUpsertClient, onUpsertSession, onClose }: AcademyOfficeProps) {
+export function AcademyOffice({ players, locations, clients, sessions, onUpdatePlayer, onUpsertClient, onUpsertSession, onDeleteSession, onClose }: AcademyOfficeProps) {
   const [activeTab, setActiveTab] = useState<Tab>('insights');
 
   return (
@@ -75,7 +76,7 @@ export function AcademyOffice({ players, locations, clients, sessions, onUpdateP
       {/* Main Workspace */}
       <div className="flex-1 overflow-hidden relative">
          {activeTab === 'insights' && <InsightsDashboard players={players} sessions={sessions} />}
-         {activeTab === 'scheduler' && <SchedulerWorkspace players={players} locations={locations} sessions={sessions} onUpsertSession={onUpsertSession} />}
+         {activeTab === 'scheduler' && <SchedulerWorkspace players={players} locations={locations} sessions={sessions} onUpsertSession={onUpsertSession} onDeleteSession={onDeleteSession} />}
          {activeTab === 'accounts' && <AccountsWorkspace clients={clients} players={players} onUpsertClient={onUpsertClient} />}
          {activeTab === 'bookings' && <BookingsWorkspace clients={clients} players={players} sessions={sessions} />}
       </div>
@@ -86,7 +87,7 @@ export function AcademyOffice({ players, locations, clients, sessions, onUpdateP
 // ============================================
 // SCHEDULER WORKSPACE
 // ============================================
-function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: { players: Player[], locations: LocationConfig[], sessions: TrainingSession[], onUpsertSession: (s: TrainingSession) => void }) {
+function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onDeleteSession }: { players: Player[], locations: LocationConfig[], sessions: TrainingSession[], onUpsertSession: (s: TrainingSession) => void, onDeleteSession: (id: string) => void }) {
    const [currentDate, setCurrentDate] = useState(new Date());
    const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('week');
    const [selectedSessionType, setSelectedSessionType] = useState<SessionType>('Private');
@@ -295,7 +296,7 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
 
    const handleDeleteSession = (sessionId: string) => {
       if (!confirm("Delete this entire session?")) return;
-      onUpsertSession({ ...sessions.find(s => s.id === sessionId)!, participantIds: [], notes: 'Cancelled' });
+      onDeleteSession(sessionId);
    };
 
    const handleRemovePlayerFromSession = (sessionId: string, playerId: string) => {
@@ -643,7 +644,8 @@ function generateSmartBlocks(startHour: number, endHour: number, events: any[], 
          if (days.some(d => d.toDateString() === eventDate)) {
             activeHours.add(h);
             const currentMax = activeCapacities.get(h) || 0;
-            activeCapacities.set(h, Math.max(currentMax, e.maxCapacity || 1));
+            // Use actual participant count to determine height, not theoretical max
+            activeCapacities.set(h, Math.max(currentMax, e.participantIds.length || 1));
          }
       }
    });
