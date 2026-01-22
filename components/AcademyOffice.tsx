@@ -233,6 +233,41 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
       setDraggedPlayerId(null);
    };
 
+   // Auto-calculate type based on participant count
+   const calculateSessionType = (count: number): SessionType => {
+      if (count >= 3) return 'Group';
+      if (count === 2) return 'Semi';
+      return 'Private';
+   };
+
+   const handleAddParticipant = (playerId: string) => {
+      if (!editingSession || editingSession.participantIds.includes(playerId)) return;
+      const newIds = [...editingSession.participantIds, playerId];
+      const newType = calculateSessionType(newIds.length);
+      
+      setEditingSession({
+         ...editingSession,
+         participantIds: newIds,
+         type: newType,
+         price: SESSION_PRICING[newType],
+         maxCapacity: SESSION_LIMITS[newType]
+      });
+   };
+
+   const handleRemoveParticipant = (playerId: string) => {
+      if (!editingSession) return;
+      const newIds = editingSession.participantIds.filter(id => id !== playerId);
+      const newType = calculateSessionType(newIds.length || 1); // Default to Private if empty
+
+      setEditingSession({
+         ...editingSession,
+         participantIds: newIds,
+         type: newType,
+         price: SESSION_PRICING[newType],
+         maxCapacity: SESSION_LIMITS[newType]
+      });
+   };
+
    // Update Session Handler
    const handleUpdateSession = () => {
       if (!editingSession) return;
@@ -287,35 +322,93 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession }: {
          {/* EDIT SESSION MODAL */}
          {editingSession && (
             <div className="absolute inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-               <div className="w-full max-w-sm bg-card border border-border rounded-xl shadow-2xl p-6 space-y-4">
-                  <h3 className="font-bold text-lg">{sessions.find(s => s.id === editingSession.id) ? 'Edit Session' : 'Create Session'}</h3>
-                  
-                  <div className="space-y-3">
-                     <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground uppercase font-bold">Time</label>
-                        <Input type="time" value={editingSession.startTime} onChange={e => setEditingSession({...editingSession, startTime: e.target.value})} className="bg-background border-border" />
+               <div className="w-full max-w-md bg-card border border-border rounded-xl shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between border-b border-border pb-4">
+                     <div>
+                        <h3 className="font-bold text-lg leading-tight">{sessions.find(s => s.id === editingSession.id) ? 'Edit Session' : 'New Session'}</h3>
+                        <p className="text-xs text-muted-foreground">{editingSession.date}</p>
                      </div>
+                     <div className="text-right">
+                        <div className="text-lg font-black text-primary">R{editingSession.price}</div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{editingSession.type}</div>
+                     </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                     <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                           <label className="text-[10px] font-bold text-muted-foreground uppercase">Time</label>
+                           <Input type="time" value={editingSession.startTime} onChange={e => setEditingSession({...editingSession, startTime: e.target.value})} className="bg-background border-border" />
+                        </div>
+                        <div className="space-y-1">
+                           <label className="text-[10px] font-bold text-muted-foreground uppercase">Location</label>
+                           <Input value={editingSession.location} onChange={e => setEditingSession({...editingSession, location: e.target.value})} className="bg-background border-border" />
+                        </div>
+                     </div>
+
+                     {/* Participant Management */}
+                     <div className="space-y-2 bg-secondary/20 p-3 rounded-xl border border-border/50">
+                        <div className="flex items-center justify-between">
+                           <label className="text-[10px] font-bold text-muted-foreground uppercase">Roster ({editingSession.participantIds.length})</label>
+                           <Select onValueChange={handleAddParticipant}>
+                              <SelectTrigger className="h-7 w-[140px] text-[10px] bg-background border-border"><SelectValue placeholder="+ Add Player" /></SelectTrigger>
+                              <SelectContent>
+                                 {players
+                                    .filter(p => !editingSession.participantIds.includes(p.id))
+                                    .map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)
+                                 }
+                              </SelectContent>
+                           </Select>
+                        </div>
+                        
+                        <div className="space-y-1.5 max-h-[120px] overflow-y-auto custom-scrollbar">
+                           {editingSession.participantIds.length > 0 ? (
+                              editingSession.participantIds.map(pid => {
+                                 const p = players.find(x => x.id === pid);
+                                 if (!p) return null;
+                                 return (
+                                    <div key={pid} className="flex items-center justify-between p-2 rounded-lg bg-card border border-border">
+                                       <div className="flex items-center gap-2">
+                                          <div className="h-5 w-5 rounded-full text-[8px] flex items-center justify-center font-bold text-white" style={{ backgroundColor: p.avatarColor }}>
+                                             {p.name.substring(0,1)}
+                                          </div>
+                                          <span className="text-xs font-bold">{p.name}</span>
+                                       </div>
+                                       <button onClick={() => handleRemoveParticipant(pid)} className="text-muted-foreground hover:text-red-500">
+                                          <X className="w-3 h-3" />
+                                       </button>
+                                    </div>
+                                 );
+                              })
+                           ) : (
+                              <div className="text-center py-4 text-xs text-muted-foreground italic">No players added yet.</div>
+                           )}
+                        </div>
+                     </div>
+
                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground uppercase font-bold">Type</label>
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Manual Override</label>
                         <Select value={editingSession.type} onValueChange={(v: SessionType) => setEditingSession({...editingSession, type: v, price: SESSION_PRICING[v], maxCapacity: SESSION_LIMITS[v]})}>
-                           <SelectTrigger className="bg-background border-border"><SelectValue /></SelectTrigger>
+                           <SelectTrigger className="bg-background border-border h-8 text-xs"><SelectValue /></SelectTrigger>
                            <SelectContent>
-                              <SelectItem value="Private">Private (R350)</SelectItem>
-                              <SelectItem value="Semi">Semi-Private (R250)</SelectItem>
-                              <SelectItem value="Group">Group (R200)</SelectItem>
+                              <SelectItem value="Private">Private (Max 1)</SelectItem>
+                              <SelectItem value="Semi">Doubles (Max 2)</SelectItem>
+                              <SelectItem value="Group">Group (Max 5)</SelectItem>
                            </SelectContent>
                         </Select>
                      </div>
-                     <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground uppercase font-bold">Location</label>
-                        <Input value={editingSession.location} onChange={e => setEditingSession({...editingSession, location: e.target.value})} className="bg-background border-border" />
-                     </div>
                   </div>
 
-                  <div className="flex gap-2 pt-2">
-                     <Button variant="ghost" className="flex-1" onClick={() => setEditingSession(null)}>Cancel</Button>
-                     <Button className="flex-1" onClick={handleUpdateSession}>
-                        {sessions.find(s => s.id === editingSession.id) ? 'Update' : 'Create'}
+                  <div className="flex gap-2 pt-2 border-t border-border mt-2">
+                     {sessions.find(s => s.id === editingSession.id) && (
+                        <Button variant="ghost" className="text-red-400 hover:text-red-500 hover:bg-red-500/10" onClick={() => { handleDeleteSession(editingSession.id); setEditingSession(null); }}>
+                           Delete
+                        </Button>
+                     )}
+                     <div className="flex-1" />
+                     <Button variant="ghost" onClick={() => setEditingSession(null)}>Cancel</Button>
+                     <Button onClick={handleUpdateSession} className="font-bold min-w-[80px]">
+                        Save
                      </Button>
                   </div>
                </div>
