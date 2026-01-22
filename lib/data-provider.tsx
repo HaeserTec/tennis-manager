@@ -169,7 +169,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             
             if (error) {
                 console.error(`Error fetching ${tableName}:`, error);
-                alert(`Sync Error (${tableName}): ${error.message}`);
                 return;
             }
 
@@ -185,7 +184,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                 const { error: uploadError } = await supabase.from(tableName).upsert(sanitized);
                 if (uploadError) {
                     console.error(`[Sync] Failed to seed ${tableName}:`, uploadError);
-                    alert(`Upload Error (${tableName}): ${uploadError.message}`);
                 }
             } else {
                 // Case C: Both empty -> Do nothing
@@ -193,7 +191,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             }
         } catch (e: any) {
             console.error(`[Sync] Unexpected error for ${tableName}:`, e);
-            alert(`Critical Error (${tableName}): ${e.message || e}`);
         }
     };
 
