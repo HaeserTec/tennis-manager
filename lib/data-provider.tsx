@@ -152,6 +152,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       return safeJsonParse<Term[]>(localStorage.getItem('tactics-lab-terms'), []);
   });
 
+  // Ref to hold latest state for sync (avoids infinite dependency loop)
+  const stateRef = useRef({
+      drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms
+  });
+
+  useEffect(() => {
+      stateRef.current = { drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms };
+  }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms]);
+
   // Track if we have done the initial sync
   const hasSynced = useRef(false);
 
@@ -162,6 +171,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return;
     }
     console.log('--- STARTING SAFE SYNC ---');
+
+    // Use ref state to avoid stale closures without triggering re-renders
+    const localState = stateRef.current;
 
     const syncTable = async (tableName: string, localData: any[], setter: React.Dispatch<React.SetStateAction<any[]>>) => {
         try {
@@ -197,27 +209,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
         // Step 1: Upload independent tables
         await Promise.all([
-            syncTable('clients', clients, setClients), // MUST be before players
-            syncTable('drills', drills, setDrills),
-            syncTable('drill_templates', templates, setTemplates),
-            syncTable('sequences', sequences, setSequences),
-            syncTable('session_plans', plans, setPlans),
-            syncTable('training_sessions', sessions, setSessions),
-            syncTable('locations', locations, setLocations),
-            syncTable('terms', terms, setTerms),
+            syncTable('clients', localState.clients, setClients), 
+            syncTable('drills', localState.drills, setDrills),
+            syncTable('drill_templates', localState.templates, setTemplates),
+            syncTable('sequences', localState.sequences, setSequences),
+            syncTable('session_plans', localState.plans, setPlans),
+            syncTable('training_sessions', localState.sessions, setSessions),
+            syncTable('locations', localState.locations, setLocations),
+            syncTable('terms', localState.terms, setTerms),
         ]);
 
         // Step 2: Upload players (depends on clients)
-        await syncTable('players', players, setPlayers);
+        await syncTable('players', localState.players, setPlayers);
 
         // Step 3: Upload logs (depends on players)
-        await syncTable('session_logs', logs, setLogs);
+        await syncTable('session_logs', localState.logs, setLogs);
 
         console.log('--- SYNC COMPLETE ---');
     } catch (err: any) {
         console.error(`Global Sync Failed: ${err.message}`);
     }
-  }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms]);
+  }, []); // Empty dependency array = Stable function!
 
   // 2. Supabase Sync on Mount
   useEffect(() => {
