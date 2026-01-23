@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Client } from '@/lib/playbook';
 import { PlaybookDiagramV2 } from '@/components/PlaybookDiagramV2';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface LandingScreenProps {
   clients: Client[];
@@ -23,6 +23,10 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
 
   const handleCoachSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isSupabaseConfigured) {
+       setError("System not configured. Please check Vercel environment variables.");
+       return;
+    }
     setLoading(true);
     setError('');
     setSuccessMsg('');
