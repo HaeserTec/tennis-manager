@@ -381,9 +381,12 @@ export function calculateAttendanceStreak(playerId: string, sessions: TrainingSe
   const attendedDates = sessions
     .filter(s => 
       s.participantIds.includes(playerId) && 
-      new Date(s.date + 'T' + s.startTime) < now
+      new Date(`${s.date}T${s.startTime}`) < now
     )
-    .map(s => new Date(s.date));
+    .map(s => {
+       const [y, m, d] = s.date.split('-').map(Number);
+       return new Date(y, m - 1, d);
+    });
 
   if (attendedDates.length === 0) return 0;
 

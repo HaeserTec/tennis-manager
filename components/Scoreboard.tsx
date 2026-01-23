@@ -185,7 +185,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                         <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('backToBase')}>Base Speed</div>
                         <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('longestRally')}>Rally</div>
                         <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('firstServe')}>Serve %</div>
-                        <div className="p-4 text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-1" onClick={() => handleSort('streak')}>
+                        <div className="p-4 text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-1" onClick={() => handleSort('streak')} title="Consecutive weeks with a past scheduled session">
                            <Flame className="w-3 h-3 text-orange-500" /> Streak
                         </div>
                      </div>
