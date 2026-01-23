@@ -133,6 +133,9 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
                     
                     <div className="space-y-1">
                        <Input 
+                          name="email"
+                          id="email"
+                          autoComplete="email"
                           type="email" 
                           placeholder="Email" 
                           className="bg-slate-950/50 border-white/10 h-10 font-medium focus-visible:ring-primary"
@@ -143,6 +146,9 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
                     </div>
                     <div className="space-y-1">
                        <Input 
+                          name="password"
+                          id="password"
+                          autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
                           type="password" 
                           placeholder="Password" 
                           className="bg-slate-950/50 border-white/10 h-10 font-medium focus-visible:ring-primary"
