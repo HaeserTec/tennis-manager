@@ -134,7 +134,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   });
   const [players, setPlayers] = useState<Player[]>(() => {
       const saved = safeJsonParse<Player[]>(localStorage.getItem('tactics-lab-players'), []);
-      return (saved ?? []).map(p => ({...p, id: p.id ?? nanoid(), assignedDrills: p.assignedDrills || []}));
+      return (saved ?? []).map(p => ({
+          ...p, 
+          id: p.id ?? nanoid(), 
+          name: p.name || "Unknown Player", 
+          assignedDrills: p.assignedDrills || []
+      }));
   });
   const [clients, setClients] = useState<Client[]>(() => {
       const saved = safeJsonParse<Client[]>(localStorage.getItem('tactics-lab-clients'), []);

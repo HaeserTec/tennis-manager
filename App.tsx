@@ -133,6 +133,9 @@ export default function App() {
         setCurrentUser({ type: 'coach' });
         forceSync(); // Trigger sync now that we have a user
       }
+    }).catch(err => {
+       console.warn("Auth check failed:", err);
+       // Fallback: stay logged out (Landing Screen)
     });
 
     const {
