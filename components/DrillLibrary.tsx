@@ -264,6 +264,7 @@ export function DrillLibrary({ drills, onUpdateDrill, onDeleteDrill, onSelectDri
           )}>
             {filteredDrills.map(drill => (
               <DrillCard
+                key={drill.id}
                 drill={drill}
                 category={categories.find(c => c.id === drill.categoryId)}
                 viewMode={viewMode}

@@ -192,9 +192,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             } else if (localData.length > 0) {
                 // Case B: Cloud is empty BUT Local has data -> Seed Cloud (Upload)
                 // Sanitize: Remove undefined values which break Supabase
-                const sanitized = localData.map(item => JSON.parse(JSON.stringify(item)));
-                console.log(`[Sync] ${tableName}: Cloud empty. Seeding ${localData.length} items from local.`);
-                const { error: uploadError } = await supabase.from(tableName).upsert(sanitized);
+                // Deduplicate: Ensure no duplicate IDs in payload
+                const uniqueData = Array.from(new Map(localData.map(item => [item.id, item])).values());
+                const sanitized = uniqueData.map(item => JSON.parse(JSON.stringify(item)));
+                
+                console.log(`[Sync] ${tableName}: Cloud empty. Seeding ${sanitized.length} items from local.`);
+                const { error: uploadError } = await supabase.from(tableName).upsert(sanitized, { onConflict: 'id' });
                 if (uploadError) {
                     console.error(`[Sync] Failed to seed ${tableName}:`, uploadError);
                 }
