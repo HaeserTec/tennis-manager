@@ -679,17 +679,6 @@ export default function App() {
 
   return (
     <div className="flex h-screen h-[100dvh] w-full bg-background text-foreground overflow-hidden font-sans">
-      {fullscreenSupported && (
-        <button
-          type="button"
-          onClick={toggleFullscreen}
-          className="fixed top-3 left-1/2 -translate-x-1/2 z-[60] inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground shadow-lg backdrop-blur transition-colors hover:text-foreground no-print"
-          title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-          aria-label={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-        >
-          {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-        </button>
-      )}
       <div className="no-print">
         <NavigationRail 
            currentMode={appMode} 
@@ -702,6 +691,9 @@ export default function App() {
            onOpenClientPortal={() => setCurrentUser(null)} // Log Out
            installPrompt={installPrompt}
            onInstall={handleInstall}
+           isFullscreen={isFullscreen}
+           onToggleFullscreen={toggleFullscreen}
+           fullscreenSupported={fullscreenSupported}
         />
       </div>
       
@@ -717,6 +709,9 @@ export default function App() {
            onOpenClientPortal={() => setCurrentUser(null)} // Log Out
            installPrompt={installPrompt}
            onInstall={handleInstall}
+           isFullscreen={isFullscreen}
+           onToggleFullscreen={toggleFullscreen}
+           fullscreenSupported={fullscreenSupported}
         />
       </div>
 

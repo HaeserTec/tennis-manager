@@ -14,7 +14,9 @@ import {
   Settings,
   Download,
   Trophy,
-  LogOut
+  LogOut,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import type { AppMode } from './NavigationRail';
 
@@ -29,6 +31,9 @@ interface MobileFABProps {
   onOpenClientPortal?: () => void;
   installPrompt?: any;
   onInstall?: () => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
+  fullscreenSupported?: boolean;
 }
 
 export function MobileFAB({ 
@@ -41,7 +46,10 @@ export function MobileFAB({
   onOpenSettings,
   onOpenClientPortal,
   installPrompt,
-  onInstall
+  onInstall,
+  isFullscreen,
+  onToggleFullscreen,
+  fullscreenSupported
 }: MobileFABProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -86,6 +94,16 @@ export function MobileFAB({
            />
         )}
         
+        {fullscreenSupported && (
+          <FabItem 
+             label={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+             icon={isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+             onClick={() => handleSelect(onToggleFullscreen!)}
+             active={false}
+             color="text-muted-foreground"
+          />
+        )}
+
         {installPrompt && (
           <FabItem 
              label="Install App" 

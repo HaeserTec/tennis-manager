@@ -12,7 +12,9 @@ import {
   Download, 
   Trophy, 
   Briefcase,
-  LogOut
+  LogOut,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
   import { ThemeToggle } from './ThemeToggle';
   
@@ -29,6 +31,9 @@ import {
     onOpenClientPortal?: () => void;
     installPrompt?: any;
     onInstall?: () => void;
+    isFullscreen?: boolean;
+    onToggleFullscreen?: () => void;
+    fullscreenSupported?: boolean;
   }
   
   export function NavigationRail({
@@ -41,7 +46,10 @@ import {
     onOpenSettings,
     onOpenClientPortal,
     installPrompt,
-    onInstall
+    onInstall,
+    isFullscreen,
+    onToggleFullscreen,
+    fullscreenSupported
   }: NavigationRailProps) {
     return (
       <div className="hidden lg:flex flex-col items-center w-16 h-full bg-background border-r border-border py-4 z-40">
@@ -135,6 +143,15 @@ import {
            <button onClick={onOpenClientPortal} className="p-2 text-muted-foreground hover:text-red-400 transition-colors" title="Log Out">
               <LogOut className="w-5 h-5" />
            </button>
+        )}
+        {fullscreenSupported && (
+          <button 
+            onClick={onToggleFullscreen} 
+            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+            title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+          >
+            {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+          </button>
         )}
         {installPrompt && (
           <button 
