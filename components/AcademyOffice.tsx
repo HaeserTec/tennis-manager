@@ -25,6 +25,7 @@ interface AcademyOfficeProps {
   onUpsertClient: (client: Client) => void;
   onUpsertSession: (session: TrainingSession) => void;
   onDeleteSession: (sessionId: string) => void;
+  onUploadFile?: (bucket: string, file: File) => Promise<string | null>;
   onClose: () => void;
 }
 
@@ -42,7 +43,7 @@ const SESSION_LIMITS = {
    Group: 5
 };
 
-export function AcademyOffice({ players, locations, clients, sessions, onUpdatePlayer, onUpsertClient, onUpsertSession, onDeleteSession, onClose }: AcademyOfficeProps) {
+export function AcademyOffice({ players, locations, clients, sessions, onUpdatePlayer, onUpsertClient, onUpsertSession, onDeleteSession, onUploadFile, onClose }: AcademyOfficeProps) {
   const [activeTab, setActiveTab] = useState<Tab>('insights');
 
   return (
@@ -77,7 +78,7 @@ export function AcademyOffice({ players, locations, clients, sessions, onUpdateP
       <div className="flex-1 overflow-hidden relative">
          {activeTab === 'insights' && <InsightsDashboard players={players} sessions={sessions} />}
          {activeTab === 'scheduler' && <SchedulerWorkspace players={players} locations={locations} sessions={sessions} onUpsertSession={onUpsertSession} onDeleteSession={onDeleteSession} />}
-         {activeTab === 'accounts' && <AccountsWorkspace clients={clients} players={players} onUpsertClient={onUpsertClient} />}
+         {activeTab === 'accounts' && <AccountsWorkspace clients={clients} players={players} onUpsertClient={onUpsertClient} onUploadFile={onUploadFile} />}
          {activeTab === 'bookings' && <BookingsWorkspace clients={clients} players={players} sessions={sessions} />}
       </div>
     </div>
@@ -901,7 +902,7 @@ function DayView({ currentDate, events, onDrop, location, onRemovePlayer, onEdit
 // ============================================
 // ACCOUNTS WORKSPACE
 // ============================================
-function AccountsWorkspace({ clients, players, onUpsertClient }: { clients: Client[], players: Player[], onUpsertClient: (c: Client) => void }) {
+function AccountsWorkspace({ clients, players, onUpsertClient, onUploadFile }: { clients: Client[], players: Player[], onUpsertClient: (c: Client) => void, onUploadFile?: (bucket: string, file: File) => Promise<string | null> }) {
    const [q, setQ] = useState('');
    const [activeClientId, setActiveClientId] = useState<string | null>(null); // For detail/payment view
    const filtered = clients.filter(c => c.name.toLowerCase().includes(q.toLowerCase()));
@@ -931,6 +932,7 @@ function AccountsWorkspace({ clients, players, onUpsertClient }: { clients: Clie
             players={players.filter(p => p.clientId === selectedClient.id)}
             onBack={() => setActiveClientId(null)}
             onUpdate={onUpsertClient}
+            onUploadFile={onUploadFile}
          />
       );
    }
@@ -1008,23 +1010,32 @@ function AccountsWorkspace({ clients, players, onUpsertClient }: { clients: Clie
    );
 }
 
-function ClientDetailView({ client, players, onBack, onUpdate }: { client: Client, players: Player[], onBack: () => void, onUpdate: (c: Client) => void }) {
+function ClientDetailView({ client, players, onBack, onUpdate, onUploadFile }: { client: Client, players: Player[], onBack: () => void, onUpdate: (c: Client) => void, onUploadFile?: (bucket: string, file: File) => Promise<string | null> }) {
    const [amount, setAmount] = useState("");
    const [note, setNote] = useState("");
    const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA'));
    const [proofFile, setProofFile] = useState<{ name: string, data: string } | null>(null);
    const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      // Limit to 500KB to prevent localStorage overflow
-      if (file.size > 500 * 1024) {
-         alert("File is too large! Please attach a file smaller than 500KB to ensure it saves.");
+      // Limit to 5MB for storage
+      if (file.size > 5 * 1024 * 1024) {
+         alert("File is too large! Please attach a file smaller than 5MB.");
          return;
       }
 
+      if (onUploadFile) {
+         const url = await onUploadFile('documents', file);
+         if (url) {
+            setProofFile({ name: file.name, data: url });
+            return;
+         }
+      }
+
+      // Fallback
       const reader = new FileReader();
       reader.onloadend = () => {
          setProofFile({ name: file.name, data: reader.result as string });

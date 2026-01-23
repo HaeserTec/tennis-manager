@@ -121,7 +121,7 @@ export default function App() {
      clients, upsertClient,
      sessions, upsertSession, deleteSession,
      locations, setLocations,
-     logs, upsertLog,
+     logs, upsertLog, uploadFile,
      terms,
      forceSync
   } = useData();
@@ -1093,6 +1093,7 @@ export default function App() {
                 onUpsertClient={upsertClient}
                 onUpsertSession={upsertSession} // Pass session handler
                 onDeleteSession={deleteSession}
+                onUploadFile={uploadFile}
                 onClose={handleGoHome}
              />
          ) : appMode === 'scoreboard' ? (
@@ -1129,6 +1130,7 @@ export default function App() {
                    const p = players.find(x => x.id === pid);
                    if (p) updatePlayer({ ...p, assignedDrills: p.assignedDrills.filter(x => x !== did) });
                }}
+               onUploadFile={uploadFile}
             />
           ) : appMode === 'plans' ? (
               activePlanId ? (

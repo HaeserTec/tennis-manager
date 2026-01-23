@@ -17,6 +17,7 @@ interface LockerRoomProps {
   onDeletePlayer: (playerId: string) => void;
   onAssignDrill: (playerId: string, drillId: string) => void;
   onUnassignDrill: (playerId: string, drillId: string) => void;
+  onUploadFile?: (bucket: string, file: File) => Promise<string | null>;
   initialSelectedPlayerId?: string | null;
 }
 
@@ -41,7 +42,7 @@ const AVATAR_COLORS = [
 
 const getRandomColor = () => AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 
-export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAddPlayer, onUpsertClient, onDeletePlayer, onAssignDrill, onUnassignDrill, initialSelectedPlayerId }: LockerRoomProps) {
+export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAddPlayer, onUpsertClient, onDeletePlayer, onAssignDrill, onUnassignDrill, onUploadFile, initialSelectedPlayerId }: LockerRoomProps) {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const listPanelRef = useRef<HTMLDivElement | null>(null);
@@ -371,6 +372,7 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
               onBack={() => setSelectedPlayerId(null)}
               onAssignDrill={onAssignDrill}
               onUnassignDrill={onUnassignDrill}
+              onUploadFile={onUploadFile}
            />
         ) : (
            <AcademyCourtView 
@@ -384,7 +386,7 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
   );
 }
 
-function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, onDelete, onBack, onAssignDrill, onUnassignDrill }: any) {
+function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, onDelete, onBack, onAssignDrill, onUnassignDrill, onUploadFile }: any) {
    const assignedDrillsData = drills.filter((d: Drill) => player.assignedDrills.includes(d.id));
    const fileInputRef = useRef<HTMLInputElement>(null);
    const [showColors, setShowColors] = useState(false);
@@ -407,9 +409,19 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
       });
    };
 
-   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      
+      if (onUploadFile) {
+         const url = await onUploadFile('avatars', file);
+         if (url) {
+            onUpdate({ ...player, avatarUrl: url, updatedAt: Date.now() });
+            return;
+         }
+      }
+
+      // Fallback
       const reader = new FileReader();
       reader.onloadend = () => {
          onUpdate({ ...player, avatarUrl: reader.result as string, updatedAt: Date.now() });

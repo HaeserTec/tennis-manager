@@ -105,6 +105,7 @@ interface DataContextType {
   upsertSession: (session: TrainingSession) => void;
   deleteSession: (id: string) => void;
   upsertLog: (log: SessionLog) => void;
+  uploadFile: (bucket: string, file: File) => Promise<string | null>;
   forceSync: () => Promise<void>;
 }
 
@@ -382,6 +383,38 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
      syncToSupabase('session_logs', log, 'upsert');
   }, []);
 
+  const uploadFile = useCallback(async (bucket: string, file: File): Promise<string | null> => {
+    // If offline or not configured, fallback to Base64 (Legacy behavior)
+    if (!isSupabaseEnabled) {
+       return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+       });
+    }
+    
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+      
+      const { error } = await supabase.storage.from(bucket).upload(path, file);
+      if (error) throw error;
+      
+      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+      return data.publicUrl;
+    } catch (err) {
+      console.error('Upload failed, falling back to local:', err);
+      // Fallback on error
+      return new Promise((resolve) => {
+         const reader = new FileReader();
+         reader.onloadend = () => resolve(reader.result as string);
+         reader.readAsDataURL(file);
+      });
+    }
+  }, []);
+
+  // Ref to hold latest state for sync (avoids infinite dependency loop)
+
   return (
     <DataContext.Provider value={{
       drills, setDrills,
@@ -400,7 +433,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addSequence, updateSequence, deleteSequence,
       addPlan, updatePlan, deletePlan,
       addPlayer, updatePlayer, deletePlayer,
-      upsertClient, upsertSession, deleteSession, upsertLog,
+      upsertClient, upsertSession, deleteSession, upsertLog, uploadFile,
       forceSync
     }}>
       {children}
