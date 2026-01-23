@@ -7,7 +7,8 @@ import { nanoid, safeJsonParse, nowMs } from './utils';
 import { supabase } from './supabase';
 
 // Check if Supabase is configured
-const isSupabaseEnabled = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
+// FORCE DISABLED: To prevent network errors for user
+const isSupabaseEnabled = false; // Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 
 // --- Default Data / Constants ---
 

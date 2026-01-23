@@ -109,7 +109,8 @@ type ConfirmDialogOptions = {
 };
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<AuthState>(null);
+  // BYPASS: Default to logged in as Coach
+  const [currentUser, setCurrentUser] = useState<AuthState>({ type: 'coach' });
 
   // Consume Data Context
   const { 
@@ -126,7 +127,8 @@ export default function App() {
      forceSync
   } = useData();
 
-  // Check for existing session
+  // DISABLED: Auth checks
+  /*
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -152,6 +154,7 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, [forceSync]);
+  */
 
   const [appMode, setAppMode] = useState<AppMode>('standard');
   const [isHome, setIsHome] = useState(true);
