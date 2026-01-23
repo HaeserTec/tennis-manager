@@ -343,12 +343,12 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
                   <div className="space-y-4">
                      <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
-                           <label className="text-[10px] font-bold text-muted-foreground uppercase">Time</label>
-                           <Input type="time" value={editingSession.startTime} onChange={e => setEditingSession({...editingSession, startTime: e.target.value})} className="bg-background border-border" />
+                           <label htmlFor="session-time" className="text-[10px] font-bold text-muted-foreground uppercase">Time</label>
+                           <Input id="session-time" type="time" value={editingSession.startTime} onChange={e => setEditingSession({...editingSession, startTime: e.target.value})} className="bg-background border-border" />
                         </div>
                         <div className="space-y-1">
-                           <label className="text-[10px] font-bold text-muted-foreground uppercase">Location</label>
-                           <Input value={editingSession.location} onChange={e => setEditingSession({...editingSession, location: e.target.value})} className="bg-background border-border" />
+                           <label htmlFor="session-location" className="text-[10px] font-bold text-muted-foreground uppercase">Location</label>
+                           <Input id="session-location" value={editingSession.location} onChange={e => setEditingSession({...editingSession, location: e.target.value})} className="bg-background border-border" />
                         </div>
                      </div>
 
@@ -948,6 +948,7 @@ function AccountsWorkspace({ clients, players, onUpsertClient, onUploadFile }: {
                <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input 
+                     aria-label="Search clients"
                      className="pl-9 w-64 bg-card/50 border-border" 
                      placeholder="Search clients..." 
                      value={q}
@@ -1103,16 +1104,16 @@ function ClientDetailView({ client, players, onBack, onUpdate, onUploadFile }: {
                   </h3>
                   <div className="space-y-3">
                      <div>
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Amount (R)</label>
-                        <Input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="bg-background border-border text-lg font-mono" placeholder="0.00" />
+                        <label htmlFor="payment-amount" className="text-[10px] font-bold text-muted-foreground uppercase">Amount (R)</label>
+                        <Input id="payment-amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} className="bg-background border-border text-lg font-mono" placeholder="0.00" />
                      </div>
                      <div>
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Date</label>
-                        <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-background border-border color-scheme-dark" />
+                        <label htmlFor="payment-date" className="text-[10px] font-bold text-muted-foreground uppercase">Date</label>
+                        <Input id="payment-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-background border-border color-scheme-dark" />
                      </div>
                      <div>
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Note (Optional)</label>
-                        <Input value={note} onChange={e => setNote(e.target.value)} className="bg-background border-border" placeholder="e.g. EFT Reference / Advance Payment" />
+                        <label htmlFor="payment-note" className="text-[10px] font-bold text-muted-foreground uppercase">Note (Optional)</label>
+                        <Input id="payment-note" value={note} onChange={e => setNote(e.target.value)} className="bg-background border-border" placeholder="e.g. EFT Reference / Advance Payment" />
                      </div>
                      
                      {/* File Attachment UI */}
@@ -1333,7 +1334,7 @@ function BookingsWorkspace({ clients, players, sessions }: { clients: Client[], 
          <div className="w-80 border-r border-border/40 bg-card/20 backdrop-blur-sm flex flex-col">
             <div className="p-6 border-b border-border/30 space-y-4">
                <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground">Select Account</h3>
-               <Input placeholder="Search records..." className="bg-background/50 border-border" />
+               <Input aria-label="Filter accounts" placeholder="Search records..." className="bg-background/50 border-border" />
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
                {clients.map(c => (

@@ -216,8 +216,10 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
                
                <div className="space-y-4">
                   <div className="space-y-2">
-                     <label className="text-[10px] font-bold uppercase tracking-widest text-primary">Player Details</label>
+                     <label htmlFor="new-player-name" className="text-[10px] font-bold uppercase tracking-widest text-primary">Player Details</label>
                      <Input 
+                        id="new-player-name"
+                        name="new-player-name"
                         autoFocus
                         placeholder="Player Name (e.g. Timmy)" 
                         value={newPlayerName} 
@@ -230,12 +232,18 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
                      <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Parent / Account Holder (Optional)</label>
                      <div className="grid grid-cols-2 gap-3">
                         <Input 
+                           id="new-parent-name"
+                           name="new-parent-name"
+                           aria-label="Parent Name"
                            placeholder="Parent Name" 
                            value={newParentName} 
                            onChange={e => setNewParentName(e.target.value)} 
                            className="bg-background border-border"
                         />
                         <Input 
+                           id="new-parent-phone"
+                           name="new-parent-phone"
+                           aria-label="Parent Phone"
                            placeholder="Phone Number" 
                            value={newParentPhone} 
                            onChange={e => setNewParentPhone(e.target.value)} 
@@ -291,6 +299,7 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
            </div>
            <div className="relative">
               <Input 
+                aria-label="Search players"
                 placeholder="Search players..." 
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
@@ -804,10 +813,10 @@ function Section({ title, children }: { title: string, children: React.ReactNode
 
 function Field({ label, children }: { label: string, children: React.ReactNode }) {
    return (
-      <div className="space-y-2">
-         <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">{label}</label>
+      <label className="space-y-2 block cursor-pointer">
+         <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">{label}</span>
          {children}
-      </div>
+      </label>
    );
 }
 
@@ -820,6 +829,7 @@ function PBMetric({ label, unit, value, onChange, icon }: any) {
                <div className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">{label}</div>
                <div className="flex items-baseline gap-1">
                   <Input 
+                     aria-label={label}
                      variant="ghost" 
                      className="h-auto p-0 text-xl font-black w-16 bg-transparent border-none focus-visible:ring-0" 
                      value={value || ''} 
