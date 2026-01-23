@@ -1089,9 +1089,18 @@ function ClientDetailView({ client, players, onBack, onUpdate, onUploadFile }: {
             <Button variant="ghost" size="icon" onClick={onBack}>
                <ChevronLeft className="w-6 h-6" />
             </Button>
-            <div>
-               <h2 className="text-3xl font-black tracking-tight">{client.name}</h2>
-               <p className="text-muted-foreground text-sm font-medium">Payment History & Account Details</p>
+            <div className="flex-1">
+               <Input 
+                  value={client.name} 
+                  onChange={e => onUpdate({ ...client, name: e.target.value, updatedAt: Date.now() })} 
+                  className="text-3xl font-black tracking-tight bg-transparent border-transparent hover:border-border focus:bg-card px-2 -ml-2 h-auto py-1 shadow-none transition-all" 
+               />
+               <Input 
+                  value={client.phone} 
+                  onChange={e => onUpdate({ ...client, phone: e.target.value, updatedAt: Date.now() })} 
+                  className="text-sm font-medium text-muted-foreground bg-transparent border-transparent hover:border-border focus:bg-card px-2 -ml-2 h-8 shadow-none w-64 transition-all" 
+                  placeholder="Add Phone Number"
+               />
             </div>
          </div>
 

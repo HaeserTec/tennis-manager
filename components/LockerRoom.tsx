@@ -205,67 +205,6 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
   return (
     <div className="flex flex-col md:flex-row h-full overflow-hidden bg-background text-foreground animate-in fade-in duration-300 relative">
       
-      {/* ADD PLAYER MODAL */}
-      {isAddModalOpen && (
-         <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-6" onClick={e => e.stopPropagation()}>
-               <div className="space-y-1">
-                  <h3 className="text-xl font-black tracking-tight">New Recruit</h3>
-                  <p className="text-sm text-muted-foreground">Add a player and link their guardian account.</p>
-               </div>
-               
-               <div className="space-y-4">
-                  <div className="space-y-2">
-                     <label htmlFor="new-player-name" className="text-[10px] font-bold uppercase tracking-widest text-primary">Player Details</label>
-                     <Input 
-                        id="new-player-name"
-                        name="new-player-name"
-                        autoFocus
-                        placeholder="Player Name (e.g. Timmy)" 
-                        value={newPlayerName} 
-                        onChange={e => setNewPlayerName(e.target.value)} 
-                        className="bg-background border-border h-11"
-                     />
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t border-border">
-                     <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Parent / Account Holder (Optional)</label>
-                     <div className="grid grid-cols-2 gap-3">
-                        <Input 
-                           id="new-parent-name"
-                           name="new-parent-name"
-                           aria-label="Parent Name"
-                           placeholder="Parent Name" 
-                           value={newParentName} 
-                           onChange={e => setNewParentName(e.target.value)} 
-                           className="bg-background border-border"
-                        />
-                        <Input 
-                           id="new-parent-phone"
-                           name="new-parent-phone"
-                           aria-label="Parent Phone"
-                           placeholder="Phone Number" 
-                           value={newParentPhone} 
-                           onChange={e => setNewParentPhone(e.target.value)} 
-                           className="bg-background border-border"
-                        />
-                     </div>
-                     <p className="text-[10px] text-muted-foreground italic">
-                        *Entering a name here will automatically create a linked Client Account.
-                     </p>
-                  </div>
-               </div>
-
-               <div className="flex gap-3 pt-2">
-                  <Button variant="ghost" className="flex-1" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-                  <Button className="flex-1 font-bold" onClick={confirmCreatePlayer} disabled={!newPlayerName.trim()}>
-                     Create Profile
-                  </Button>
-               </div>
-            </div>
-         </div>
-      )}
-
       {/* List Panel */}
       <div
         ref={listPanelRef}
@@ -391,6 +330,67 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
            />
         )}
       </div>
+
+      {/* ADD PLAYER MODAL */}
+      {isAddModalOpen && (
+         <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-6" onClick={e => e.stopPropagation()}>
+               <div className="space-y-1">
+                  <h3 className="text-xl font-black tracking-tight">New Recruit</h3>
+                  <p className="text-sm text-muted-foreground">Add a player and link their guardian account.</p>
+               </div>
+               
+               <div className="space-y-4">
+                  <div className="space-y-2">
+                     <label htmlFor="new-player-name" className="text-[10px] font-bold uppercase tracking-widest text-primary">Player Details</label>
+                     <Input 
+                        id="new-player-name"
+                        name="new-player-name"
+                        autoFocus
+                        placeholder="Player Name (e.g. Timmy)" 
+                        value={newPlayerName} 
+                        onChange={e => setNewPlayerName(e.target.value)} 
+                        className="bg-background border-border h-11"
+                     />
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-border">
+                     <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Parent / Account Holder (Optional)</label>
+                     <div className="grid grid-cols-2 gap-3">
+                        <Input 
+                           id="new-parent-name"
+                           name="new-parent-name"
+                           aria-label="Parent Name"
+                           placeholder="Parent Name" 
+                           value={newParentName} 
+                           onChange={e => setNewParentName(e.target.value)} 
+                           className="bg-background border-border"
+                        />
+                        <Input 
+                           id="new-parent-phone"
+                           name="new-parent-phone"
+                           aria-label="Parent Phone"
+                           placeholder="Phone Number" 
+                           value={newParentPhone} 
+                           onChange={e => setNewParentPhone(e.target.value)} 
+                           className="bg-background border-border"
+                        />
+                     </div>
+                     <p className="text-[10px] text-muted-foreground italic">
+                        *Entering a name here will automatically create a linked Client Account.
+                     </p>
+                  </div>
+               </div>
+
+               <div className="flex gap-3 pt-2">
+                  <Button variant="ghost" className="flex-1" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
+                  <Button className="flex-1 font-bold" onClick={confirmCreatePlayer} disabled={!newPlayerName.trim()}>
+                     Create Profile
+                  </Button>
+               </div>
+            </div>
+         </div>
+      )}
     </div>
   );
 }
