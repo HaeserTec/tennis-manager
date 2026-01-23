@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Drill, SessionType, Format, Intensity, Sequence, SessionPlan, DrillTemplate } from '@/lib/playbook';
-import { cn, nanoid, nowMs } from '@/lib/utils';
+import { cn, nanoid, nowMs, downloadTextFile } from '@/lib/utils';
 import { SessionBuilder } from '@/components/SessionBuilder';
 import { HomeDashboard } from '@/components/HomeDashboard';
 import { DrillThumbnail } from '@/components/DrillThumbnail';
@@ -648,6 +648,14 @@ export default function App() {
       alert("Template saved!");
   };
 
+  const handleBackup = useCallback(() => {
+    const backup = {
+      drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms,
+      meta: { date: new Date().toISOString(), version: '1.0' }
+    };
+    downloadTextFile(`vgta-backup-${new Date().toISOString().split('T')[0]}.json`, JSON.stringify(backup, null, 2));
+  }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms]);
+
   // Scoreboard Stats for Dashboard
   const todayKey = new Date().toLocaleDateString('en-CA');
   const loggedCount = new Set(logs.filter(l => l.date === todayKey).map(l => l.playerId)).size;
@@ -1274,6 +1282,7 @@ export default function App() {
          theme={theme}
          onSetTheme={setTheme}
          onForceSync={forceSync}
+         onBackup={handleBackup}
       />
     </div>
   );

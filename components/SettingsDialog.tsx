@@ -21,9 +21,10 @@ interface SettingsDialogProps {
   theme: 'dark' | 'light' | 'midnight';
   onSetTheme: (t: 'dark' | 'light' | 'midnight') => void;
   onForceSync?: () => Promise<void>;
+  onBackup?: () => void;
 }
 
-export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, theme, onSetTheme, onForceSync }: SettingsDialogProps) {
+export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, theme, onSetTheme, onForceSync, onBackup }: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<'general' | 'academy'>('academy');
   const [newLocName, setNewLocName] = useState('');
   const [newLocRate, setNewLocRate] = useState('');
@@ -260,6 +261,26 @@ export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, 
                     >
                        <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
                        {isSyncing ? 'Syncing...' : 'Sync Now'}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-4 p-4 rounded-xl border border-border bg-card/40">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-sm flex items-center gap-2">
+                         <Download className="w-4 h-4" /> Data Backup
+                      </div>
+                      <div className="text-xs text-muted-foreground">Download a full local copy of your data.</div>
+                    </div>
+                    <Button 
+                       size="sm" 
+                       variant="secondary" 
+                       onClick={onBackup} 
+                       className="gap-2"
+                    >
+                       <Download className="w-4 h-4" />
+                       Download Backup
                     </Button>
                   </div>
                 </div>
