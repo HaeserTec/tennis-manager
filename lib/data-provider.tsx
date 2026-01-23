@@ -163,16 +163,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       stateRef.current = { drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms };
   }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms]);
 
-  // Track if we have done the initial sync
+  // Track sync state
   const hasSynced = useRef(false);
+  const lastSyncTime = useRef(0);
 
   // Sync Logic
   const forceSync = useCallback(async () => {
-    if (!isSupabaseEnabled) {
-        alert("Supabase is not configured! Check .env file.");
-        return;
-    }
-    console.log('--- STARTING SAFE SYNC ---');
+    if (!isSupabaseEnabled) return;
+    
+    // Throttle: Prevent multiple syncs within 5 seconds
+    if (Date.now() - lastSyncTime.current < 5000) return;
+    lastSyncTime.current = Date.now();
 
     // Use ref state to avoid stale closures without triggering re-renders
     const localState = stateRef.current;
@@ -182,32 +183,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             const { data: remoteData, error } = await supabase.from(tableName).select('*');
             
             if (error) {
-                console.error(`Error fetching ${tableName}:`, error);
+                // Silent error unless critical
+                if (error.code !== 'PGRST116') console.warn(`Sync error (${tableName}):`, error.message);
                 return;
             }
 
             if (remoteData && remoteData.length > 0) {
                 // Case A: Cloud has data -> Cloud wins (Download)
-                console.log(`[Sync] ${tableName}: Downloading ${remoteData.length} items from cloud.`);
                 setter(remoteData);
             } else if (localData.length > 0) {
                 // Case B: Cloud is empty BUT Local has data -> Seed Cloud (Upload)
-                // Sanitize: Remove undefined values which break Supabase
                 // Deduplicate: Ensure no duplicate IDs in payload
                 const uniqueData = Array.from(new Map(localData.map(item => [item.id, item])).values());
                 const sanitized = uniqueData.map(item => JSON.parse(JSON.stringify(item)));
                 
-                console.log(`[Sync] ${tableName}: Cloud empty. Seeding ${sanitized.length} items from local.`);
                 const { error: uploadError } = await supabase.from(tableName).upsert(sanitized, { onConflict: 'id' });
                 if (uploadError) {
-                    console.error(`[Sync] Failed to seed ${tableName}:`, uploadError);
+                    console.warn(`Seed failed (${tableName}):`, uploadError.message);
                 }
-            } else {
-                // Case C: Both empty -> Do nothing
-                console.log(`[Sync] ${tableName}: Clean slate.`);
             }
         } catch (e: any) {
-            console.error(`[Sync] Unexpected error for ${tableName}:`, e);
+            // Squelch unless critical
         }
     };
 
@@ -230,9 +226,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         // Step 3: Upload logs (depends on players)
         await syncTable('session_logs', localState.logs, setLogs);
 
-        console.log('--- SYNC COMPLETE ---');
     } catch (err: any) {
-        console.error(`Global Sync Failed: ${err.message}`);
+        // Silent catch
     }
   }, []); // Empty dependency array = Stable function!
 
