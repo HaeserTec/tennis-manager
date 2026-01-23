@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { RadialMenu } from "@/components/RadialMenu";
+import { User, Circle, Triangle, ArrowUpRight, Undo2, Trash2, X } from "lucide-react";
 
 type NodeType =
   | "coach"
@@ -1791,7 +1792,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
     <Card className={cn("border border-primary/10 bg-background flex flex-col overflow-hidden h-full shadow-[0_0_40px_-10px_hsl(var(--primary)/0.15)] rounded-xl", fill && "flex-1")}>
       {showHeader && (
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 px-4 border-b border-primary/10 bg-card/40 backdrop-blur-sm z-10">
+        <CardHeader className="hidden md:flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 px-4 border-b border-primary/10 bg-card/40 backdrop-blur-sm z-10">
         <div className="flex items-center gap-2">
            <div className="bg-primary/20 p-1.5 rounded-md text-primary shadow-[0_0_10px_-3px_hsl(var(--primary)/0.3)]">
              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
@@ -2883,6 +2884,24 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
             })()}
           </svg>
       </CardContent>
+      {/* Mobile Toolbar */}
+      <div className="md:hidden border-t border-border bg-card p-2 grid grid-cols-6 gap-1 shrink-0 z-20 pb-6 safe-area-bottom">
+         <Button variant="ghost" size="icon" className="h-12 w-full rounded-xl bg-card border border-border" onClick={() => addNode('player')}><User className="w-6 h-6 text-blue-500" /></Button>
+         <Button variant="ghost" size="icon" className="h-12 w-full rounded-xl bg-card border border-border" onClick={() => addNode('ball')}><Circle className="w-6 h-6 text-yellow-400 fill-yellow-400" /></Button>
+         <Button variant="ghost" size="icon" className="h-12 w-full rounded-xl bg-card border border-border" onClick={() => addNode('cone')}><Triangle className="w-6 h-6 text-orange-500 fill-orange-500" /></Button>
+         <Button 
+            variant={quickArrowMode ? "secondary" : "ghost"} 
+            size="icon" 
+            className={cn("h-12 w-full rounded-xl border", quickArrowMode ? "bg-primary/20 border-primary text-primary" : "bg-card border-border")} 
+            onClick={() => { setQuickArrowMode(!quickArrowMode); setDrawingPath(null); }}
+         >
+            <ArrowUpRight className="w-6 h-6" />
+         </Button>
+         <Button variant="ghost" size="icon" className="h-12 w-full rounded-xl bg-card border border-border" onClick={undo}><Undo2 className="w-6 h-6" /></Button>
+         <Button variant="ghost" size="icon" className="h-12 w-full rounded-xl bg-card border border-border" onClick={selectedIds.length ? removeSelected : resetDiagram}>
+            {selectedIds.length ? <Trash2 className="w-6 h-6 text-red-500" /> : <X className="w-6 h-6" />}
+         </Button>
+      </div>
     </Card>
     </TooltipProvider>
   );
