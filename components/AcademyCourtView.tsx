@@ -84,22 +84,14 @@ export function AcademyCourtView({ players, onSelectPlayer, onUpdatePlayerPos }:
     });
   }, [players]);
 
-  const getSvgPoint = (e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent) => {
+  const getSvgPoint = (e: React.PointerEvent | PointerEvent) => {
     if (!svgRef.current) return { x: 0, y: 0 };
     const svg = svgRef.current;
     const inv = svg.getScreenCTM()?.inverse();
     if (!inv) return { x: 0, y: 0 };
     
-    let cx = 0, cy = 0;
-    if ('touches' in e && e.touches.length > 0) {
-        cx = e.touches[0].clientX;
-        cy = e.touches[0].clientY;
-    } else if ('clientX' in e) {
-        cx = e.clientX;
-        cy = e.clientY;
-    }
-
-    const p = new DOMPoint(cx, cy).matrixTransform(inv);
+    // PointerEvent always has clientX/Y
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(inv);
     return { x: p.x, y: p.y };
   };
 
