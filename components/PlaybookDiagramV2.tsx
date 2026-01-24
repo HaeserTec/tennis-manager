@@ -1153,24 +1153,42 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
             announceToScreenReader("Start Point Set");
          } else {
             const endPt = { x: snap(pt.x), y: snap(pt.y) };
-            const { centerX, topBaseY, bottomBaseY } = getCourtMetrics();
-            const isTopTarget = endPt.y < VB_HEIGHT / 2;
+            const metrics = getCourtMetrics();
             
-            // Heuristic: Player starts from baseline of target side
-            const playerStart = { 
-               x: centerX, 
-               y: isTopTarget ? topBaseY! : bottomBaseY! 
-            };
+            let playerStart = { x: 0, y: 0 };
+            let isRedZone = false;
+
+            if (orientation === 'landscape') {
+               // Landscape: Court runs Left-Right.
+               // If target is Right (x > center), player is on Left Baseline.
+               // If target is Left (x < center), player is on Right Baseline.
+               const isTargetRight = endPt.x > metrics.centerX;
+               isRedZone = isTargetRight;
+               playerStart = {
+                  x: isTargetRight ? metrics.leftBaseX! : metrics.rightBaseX!,
+                  y: metrics.centerY
+               };
+            } else {
+               // Portrait: Court runs Top-Bottom.
+               // If target is Bottom (y > center), player is on Top Baseline.
+               const isTargetBottom = endPt.y > metrics.centerY;
+               isRedZone = !isTargetBottom;
+               playerStart = {
+                  x: metrics.centerX,
+                  y: isTargetBottom ? metrics.topBaseY! : metrics.bottomBaseY!
+               };
+            }
 
             // Frame 1: Shot & Intercept
+            // ... (rest of logic)
             const frame1: DiagramState = {
                nodes: [
                   { id: nanoid(), type: 'ball', x: rallyStartPoint.x, y: rallyStartPoint.y, r: 0 },
-                  { id: nanoid(), type: 'player', x: playerStart.x, y: playerStart.y, r: 0, color: isTopTarget ? '#ef4444' : '#2563eb' }
+                  { id: nanoid(), type: 'player', x: playerStart.x, y: playerStart.y, r: 0, color: isRedZone ? '#ef4444' : '#2563eb' }
                ],
                paths: [
                   { id: nanoid(), points: [rallyStartPoint, endPt], color: '#ffd600', pathType: 'linear', lineStyle: 'solid', width: 2 }, // Ball
-                  { id: nanoid(), points: [playerStart, endPt], color: isTopTarget ? '#ef4444' : '#2563eb', pathType: 'linear', lineStyle: 'dashed', width: 3 } // Player
+                  { id: nanoid(), points: [playerStart, endPt], color: isRedZone ? '#ef4444' : '#2563eb', pathType: 'linear', lineStyle: 'dashed', width: 3 } // Player
                ]
             };
             window.dispatchEvent(new CustomEvent("playbook:sequence:append-frame", { detail: { state: frame1 } }));
@@ -1178,10 +1196,10 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
             // Frame 2: Recovery
             const frame2: DiagramState = {
                nodes: [
-                  { id: nanoid(), type: 'player', x: endPt.x, y: endPt.y, r: 0, color: isTopTarget ? '#ef4444' : '#2563eb' }
+                  { id: nanoid(), type: 'player', x: endPt.x, y: endPt.y, r: 0, color: isRedZone ? '#ef4444' : '#2563eb' }
                ],
                paths: [
-                  { id: nanoid(), points: [endPt, playerStart], color: isTopTarget ? '#ef4444' : '#2563eb', pathType: 'linear', lineStyle: 'dotted', width: 2 }
+                  { id: nanoid(), points: [endPt, playerStart], color: isRedZone ? '#ef4444' : '#2563eb', pathType: 'linear', lineStyle: 'dotted', width: 2 }
                ]
             };
             window.dispatchEvent(new CustomEvent("playbook:sequence:append-frame", { detail: { state: frame2 } }));
@@ -2798,6 +2816,15 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
               />
             ) : null}
             
+            {/* Rally Builder Preview */}
+            {rallyMode && rallyStartPoint && (
+               <g className="pointer-events-none animate-in zoom-in duration-200">
+                  <circle cx={rallyStartPoint.x} cy={rallyStartPoint.y} r={12} fill="#ffd600" opacity={0.5} />
+                  <circle cx={rallyStartPoint.x} cy={rallyStartPoint.y} r={16} stroke="#ffd600" strokeWidth={2} fill="none" strokeDasharray="4 4" className="animate-spin-slow" />
+                  <line x1={rallyStartPoint.x} y1={rallyStartPoint.y} x2={mousePos.x} y2={mousePos.y} stroke="#ffd600" strokeWidth={2} strokeDasharray="6 6" opacity={0.5} />
+               </g>
+            )}
+            
             {state.nodes
               .filter((n) => n.type === "targetLine")
               .map((n) => {
@@ -2870,8 +2897,8 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                   // Find if this node is at the start of any path
                   // We'll use a threshold of ~40px
                   const attachedPath = state.paths.find(p => {
-                      // Restrict linear paths to only move players
-                      if (p.pathType === 'linear' && n.type !== 'player') return false;
+                      // Restrict linear paths to only move players and balls
+                      if (p.pathType === 'linear' && n.type !== 'player' && n.type !== 'ball') return false;
 
                       if (p.points.length === 0) return false;
                       const start = p.points[0];

@@ -469,8 +469,11 @@ export default function App() {
               nextFrames.splice(currentFrameIndex + 1, 0, newFrame);
               return { ...s, frames: nextFrames };
            }));
-           // Auto-advance
-           setTimeout(() => setCurrentFrameIndex(i => i + 1), 50);
+           // Auto-advance & Update Canvas
+           setTimeout(() => {
+              setCurrentFrameIndex(i => i + 1);
+              window.dispatchEvent(new CustomEvent("playbook:diagram:apply-drill", { detail: { drill: { diagram: detail.state } } }));
+           }, 50);
         }
      };
      window.addEventListener("playbook:sequence:append-frame", handler);
