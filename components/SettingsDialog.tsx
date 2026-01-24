@@ -3,15 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn, nanoid } from '@/lib/utils';
-import { X, MapPin, Plus, Trash2, Settings, Globe, RefreshCw, Cloud } from 'lucide-react';
-import type { Session } from '@/lib/playbook';
-
-export interface LocationConfig {
-  id: string;
-  name: string;
-  defaultRate: number;
-  sessionType: Session;
-}
+import { X, MapPin, Plus, Trash2, Settings, Globe, RefreshCw, Cloud, Download } from 'lucide-react';
+import type { SessionType, LocationConfig } from '@/lib/playbook';
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -28,7 +21,7 @@ export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, 
   const [activeTab, setActiveTab] = useState<'general' | 'academy'>('academy');
   const [newLocName, setNewLocName] = useState('');
   const [newLocRate, setNewLocRate] = useState('');
-  const [newLocType, setNewLocType] = useState<Session>('Group');
+  const [newLocType, setNewLocType] = useState<SessionType>('Group');
   const [isSyncing, setIsSyncing] = useState(false);
 
   if (!isOpen) return null;
@@ -130,7 +123,7 @@ export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, 
                         />
                     </div>
                     
-                    <Select value={newLocType} onValueChange={(v: Session) => setNewLocType(v)}>
+                    <Select value={newLocType} onValueChange={(v: SessionType) => setNewLocType(v)}>
                         <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="Group">Group</SelectItem>

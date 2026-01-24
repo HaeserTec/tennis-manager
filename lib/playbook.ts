@@ -220,6 +220,13 @@ export interface Term {
   endDate: string;   // YYYY-MM-DD
 }
 
+export interface LocationConfig {
+  id: string;
+  name: string;
+  defaultRate: number;
+  sessionType: SessionType;
+}
+
 export interface SessionLog {
   id: string;
   playerId: string;

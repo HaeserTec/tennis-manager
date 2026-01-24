@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn, nanoid } from '@/lib/utils';
-import type { Player, Session, Client, Payment, TrainingSession, SessionType } from '@/lib/playbook';
+import type { Player, SessionType, Client, Payment, TrainingSession, LocationConfig } from '@/lib/playbook';
 import { 
   Check, X, Phone, Search, Calendar as CalendarIcon, Users, 
   Activity, CreditCard, Plus, MapPin, 
@@ -13,8 +13,6 @@ import {
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InsightsDashboard } from './InsightsDashboard';
-
-import { LocationConfig } from '@/components/SettingsDialog';
 
 interface AcademyOfficeProps {
   players: Player[];

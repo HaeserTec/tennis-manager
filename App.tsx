@@ -456,6 +456,27 @@ export default function App() {
     return () => window.removeEventListener("playbook:diagram:push-state", handler);
   }, [activeDrillId, activeTemplateId, activeSequenceId, currentFrameIndex, hasSelection, setDrills, setTemplates, setSequences]);
 
+  // Rally Builder Listener (Append Frames)
+  useEffect(() => {
+     const handler = (e: Event) => {
+        const detail = (e as CustomEvent).detail;
+        if (detail?.state && activeSequenceId) {
+           setSequences(prev => prev.map(s => {
+              if (s.id !== activeSequenceId) return s;
+              const newFrame = { id: nanoid(), duration: 2, state: detail.state };
+              // Append after current frame index
+              const nextFrames = [...s.frames];
+              nextFrames.splice(currentFrameIndex + 1, 0, newFrame);
+              return { ...s, frames: nextFrames };
+           }));
+           // Auto-advance
+           setTimeout(() => setCurrentFrameIndex(i => i + 1), 50);
+        }
+     };
+     window.addEventListener("playbook:sequence:append-frame", handler);
+     return () => window.removeEventListener("playbook:sequence:append-frame", handler);
+  }, [activeSequenceId, currentFrameIndex]);
+
   // Actions
   const handleNavigate = async (mode: AppMode) => {
     const isEditor = ['standard', 'templates', 'performance', 'plans', 'library'].includes(appMode);

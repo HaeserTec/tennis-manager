@@ -418,6 +418,14 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
       });
    };
 
+   const updateEquipment = (key: string, value: string) => {
+      onUpdate({
+         ...player,
+         equipment: { ...(player.equipment || {}), [key]: value },
+         updatedAt: Date.now()
+      });
+   };
+
    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;

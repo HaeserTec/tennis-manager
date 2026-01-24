@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import { nanoid } from "@/lib/utils";
-import type { DrillTemplate, Drill, Intensity, Session, Format } from "@/lib/playbook";
+import type { DrillTemplate, Drill, Intensity, SessionType, Format } from "@/lib/playbook";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { RadialMenu } from "@/components/RadialMenu";
-import { User, Circle, Triangle, ArrowUpRight, Undo2, Trash2, X } from "lucide-react";
+import { User, Circle, Triangle, ArrowUpRight, Undo2, Trash2, X, Zap } from "lucide-react";
 
 type NodeType =
   | "coach"
@@ -189,10 +189,11 @@ type PlaybookDiagramProps = {
   onSaveTemplate?: (name: string) => void;
   disablePersistence?: boolean;
   isBackground?: boolean;
+  ghostState?: DiagramState | null;
 };
 
 export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDiagramProps>(
-  ({ fill = false, viewBoxWidth, viewBoxHeight, showHeader = true, templates = [], onSaveTemplate, disablePersistence = false, isBackground = false }, ref) => {
+  ({ fill = false, viewBoxWidth, viewBoxHeight, showHeader = true, templates = [], onSaveTemplate, disablePersistence = false, isBackground = false, ghostState }, ref) => {
   
   const [orientation, setOrientation] = React.useState<'landscape' | 'portrait'>(() => {
     if (typeof window !== 'undefined') {
@@ -328,6 +329,10 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
   const [announceText, setAnnounceText] = React.useState<string>("");
   const [marquee, setMarquee] = React.useState<null | { origin: { x: number; y: number }; current: { x: number; y: number }; additive: boolean }>(null);
   const [quickArrowMode, setQuickArrowMode] = React.useState(false);
+  
+  // Rally Builder State
+  const [rallyMode, setRallyMode] = React.useState(false);
+  const [rallyStartPoint, setRallyStartPoint] = React.useState<{ x: number, y: number } | null>(null);
   
   // Animation State
   const [isPlaying, setIsPlaying] = React.useState(false);
@@ -1129,7 +1134,63 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
   const onStartSvg = (e: React.MouseEvent | React.TouchEvent) => {
       // Check button only for mouse events
-      if ('button' in e && e.button !== 0 && !drawingPath && !placingType) return;
+      if ('button' in e && e.button !== 0 && !drawingPath && !placingType && !rallyMode) return;
+
+      // Handle Rally Builder
+      if (rallyMode) {
+         const pt = getSvgPoint(e);
+         
+         // Right Click to Finish (handled by onContextMenu usually, but check buttons here)
+         if (('button' in e && e.button === 2) || e.shiftKey) {
+            setRallyMode(false);
+            setRallyStartPoint(null);
+            announceToScreenReader("Rally Builder Finished");
+            return;
+         }
+
+         if (!rallyStartPoint) {
+            setRallyStartPoint({ x: snap(pt.x), y: snap(pt.y) });
+            announceToScreenReader("Start Point Set");
+         } else {
+            const endPt = { x: snap(pt.x), y: snap(pt.y) };
+            const { centerX, topBaseY, bottomBaseY } = getCourtMetrics();
+            const isTopTarget = endPt.y < VB_HEIGHT / 2;
+            
+            // Heuristic: Player starts from baseline of target side
+            const playerStart = { 
+               x: centerX, 
+               y: isTopTarget ? topBaseY! : bottomBaseY! 
+            };
+
+            // Frame 1: Shot & Intercept
+            const frame1: DiagramState = {
+               nodes: [
+                  { id: nanoid(), type: 'ball', x: rallyStartPoint.x, y: rallyStartPoint.y, r: 0 },
+                  { id: nanoid(), type: 'player', x: playerStart.x, y: playerStart.y, r: 0, color: isTopTarget ? '#ef4444' : '#2563eb' }
+               ],
+               paths: [
+                  { id: nanoid(), points: [rallyStartPoint, endPt], color: '#ffd600', pathType: 'linear', lineStyle: 'solid', width: 2 }, // Ball
+                  { id: nanoid(), points: [playerStart, endPt], color: isTopTarget ? '#ef4444' : '#2563eb', pathType: 'linear', lineStyle: 'dashed', width: 3 } // Player
+               ]
+            };
+            window.dispatchEvent(new CustomEvent("playbook:sequence:append-frame", { detail: { state: frame1 } }));
+
+            // Frame 2: Recovery
+            const frame2: DiagramState = {
+               nodes: [
+                  { id: nanoid(), type: 'player', x: endPt.x, y: endPt.y, r: 0, color: isTopTarget ? '#ef4444' : '#2563eb' }
+               ],
+               paths: [
+                  { id: nanoid(), points: [endPt, playerStart], color: isTopTarget ? '#ef4444' : '#2563eb', pathType: 'linear', lineStyle: 'dotted', width: 2 }
+               ]
+            };
+            window.dispatchEvent(new CustomEvent("playbook:sequence:append-frame", { detail: { state: frame2 } }));
+
+            setRallyStartPoint(endPt);
+            announceToScreenReader("Rally Shot Added");
+         }
+         return;
+      }
 
       if (drawingPath) {
         const pt = getSvgPoint(e);
@@ -1688,6 +1749,18 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     };
   }, []);
 
+  // External Animation Control
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail?.isPlaying === 'boolean') {
+         setIsPlaying(detail.isPlaying);
+      }
+    };
+    window.addEventListener("playbook:diagram:set-playing", handler);
+    return () => window.removeEventListener("playbook:diagram:set-playing", handler);
+  }, []);
+
   const renderGrid = (step = 20) => {
     const lines: React.ReactNode[] = [];
     for (let x = 0; x <= VB_WIDTH; x += step) {
@@ -2225,6 +2298,27 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                   <TooltipContent side="bottom">Curve Arrow</TooltipContent>
                 </Tooltip>
 
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={rallyMode ? "secondary" : "ghost"}
+                      size="icon"
+                      className={cn("h-7 w-7 rounded hover:bg-secondary", rallyMode && "bg-primary/20 text-primary")}
+                      onClick={() => {
+                         setRallyMode(!rallyMode);
+                         setDrawingPath(null);
+                         setPlacingType(null);
+                         setQuickArrowMode(false);
+                         announceToScreenReader(rallyMode ? "Rally Mode Off" : "Rally Mode On");
+                      }}
+                      aria-label="Rally Builder"
+                    >
+                      <Zap className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Rally Builder</TooltipContent>
+                </Tooltip>
+
                 <div className="w-px h-6 bg-border mx-0.5" />
 
                 <Tooltip>
@@ -2518,6 +2612,31 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
             <g>
               {drawCourt()}
             </g>
+
+            {/* GHOST LAYER (Previous Frame) */}
+            {ghostState && (
+               <g className="opacity-30 pointer-events-none grayscale filter blur-[0.5px]">
+                  {ghostState.paths.map(p => (
+                     <polyline
+                        key={`ghost-p-${p.id}`}
+                        fill="none"
+                        stroke="#000"
+                        strokeWidth={2}
+                        strokeDasharray="4 4"
+                        points={p.points.map(pt => `${pt.x},${pt.y}`).join(" ")}
+                     />
+                  ))}
+                  {ghostState.nodes.map(n => (
+                     <g key={`ghost-n-${n.id}`} transform={`translate(${n.x},${n.y}) rotate(${n.r})`}>
+                        {n.type === 'player' && <circle r={26} stroke="#000" strokeWidth={2} fill="none" />}
+                        {n.type === 'coach' && <rect x={-26} y={-26} width={52} height={52} rx={8} stroke="#000" strokeWidth={2} fill="none" />}
+                        {n.type === 'ball' && <circle r={12} fill="#ccc" />}
+                        {n.type === 'cone' && <path transform="scale(1)" d="M 0 -12 L 9 7.5 L -9 7.5 Z" fill="none" stroke="#000" strokeWidth={2} />}
+                     </g>
+                  ))}
+               </g>
+            )}
+
             {/* existing paths */}
             {state.paths.map((p) => {
               const isSelected = selectedIds.includes(p.id);
