@@ -256,6 +256,45 @@ export default function App() {
   const [activePlanId, setActivePlanId] = useState<string | null>(null);
   const [currentFrameIndex, setCurrentFrameIndex] = useState<number>(0);
   
+  // Sequence Playback State
+  const [isSequencePlaying, setIsSequencePlaying] = useState(false);
+  const sequenceTimer = useRef<number | null>(null);
+
+  // Drive Sequence Playback
+  useEffect(() => {
+     if (!isSequencePlaying || !activeSequenceId) {
+        if (sequenceTimer.current) window.clearTimeout(sequenceTimer.current);
+        window.dispatchEvent(new CustomEvent("playbook:diagram:set-playing", { detail: { isPlaying: false } }));
+        return;
+     }
+
+     const seq = sequences.find(s => s.id === activeSequenceId);
+     if (!seq) return;
+
+     // 1. Start Animation for current frame
+     window.dispatchEvent(new CustomEvent("playbook:diagram:set-playing", { detail: { isPlaying: true } }));
+
+     // 2. Schedule next frame
+     sequenceTimer.current = window.setTimeout(() => {
+        const next = currentFrameIndex + 1;
+        if (next < seq.frames.length) {
+           setCurrentFrameIndex(next);
+           window.dispatchEvent(new CustomEvent("playbook:diagram:apply-drill", { detail: { drill: { diagram: seq.frames[next].state } } }));
+        } else {
+           // End of sequence
+           setIsSequencePlaying(false);
+           setCurrentFrameIndex(0); // Reset to start? Or stay at end? Let's stay at end or loop?
+           // User usually wants to see the flow. Let's Loop or Stop. Stop is better for analysis.
+           // User: "continuous loop... useless".
+           // Let's Stop.
+        }
+     }, 3000); // 3s per beat (2s animate + 1s read)
+
+     return () => {
+        if (sequenceTimer.current) window.clearTimeout(sequenceTimer.current);
+     };
+  }, [isSequencePlaying, currentFrameIndex, activeSequenceId, sequences]);
+  
   // UI States
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
@@ -1170,32 +1209,92 @@ export default function App() {
                   showHeader={true} 
                   templates={templates} 
                   onSaveTemplate={handleSaveTemplateFromCanvas} 
+                  ghostState={appMode === 'performance' && activeSequenceId && currentFrameIndex > 0 
+                     ? sequences.find(s => s.id === activeSequenceId)?.frames[currentFrameIndex - 1]?.state 
+                     : null
+                  }
                />
                
                {/* Sequence Timeline Overlay */}
                {appMode === 'performance' && activeSequenceId && (
-                  <div className="absolute bottom-10 left-10 right-10 bg-background/90 border border-indigo-500/30 p-4 rounded-xl flex gap-4 items-center">
-                      <Button onClick={() => {
-                         // Add Frame Logic
-                         setSequences(prev => prev.map(s => {
-                            if (s.id !== activeSequenceId) return s;
-                            const newFrame = { id: nanoid(), duration: 2, state: latestCanvasState.current || { nodes: [], paths: [] } };
-                            return { ...s, frames: [...s.frames, newFrame] };
-                         }));
-                      }}>+ Add Frame</Button>
-                      <div className="flex gap-2 overflow-x-auto">
-                         {sequences.find(s => s.id === activeSequenceId)?.frames.map((f, i) => (
-                            <div 
-                               key={f.id} 
-                               className={cn("w-10 h-10 border flex items-center justify-center cursor-pointer", currentFrameIndex === i ? "bg-indigo-500 text-white" : "bg-card text-muted-foreground")}
-                               onClick={() => {
-                                  setCurrentFrameIndex(i);
-                                  window.dispatchEvent(new CustomEvent("playbook:diagram:apply-drill", { detail: { drill: { diagram: f.state } } }));
-                               }}
-                            >
-                               {i + 1}
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full max-w-3xl px-4 z-30">
+                      <div className="bg-background/95 backdrop-blur-md border border-border p-2 rounded-2xl shadow-2xl flex flex-col gap-2">
+                         {/* Playback Controls */}
+                         <div className="flex items-center justify-between px-2">
+                            <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground">Rally Timeline</h3>
+                            <div className="flex gap-1">
+                               <Button variant="ghost" size="icon" className="h-8 w-8" disabled={currentFrameIndex === 0} onClick={() => {
+                                  const prev = currentFrameIndex - 1;
+                                  setCurrentFrameIndex(prev);
+                                  const frame = sequences.find(s => s.id === activeSequenceId)?.frames[prev];
+                                  if (frame) window.dispatchEvent(new CustomEvent("playbook:diagram:apply-drill", { detail: { drill: { diagram: frame.state } } }));
+                               }}>
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 20L9 12l10-8v16zM5 19h2V5H5v14z"/></svg>
+                               </Button>
+                               
+                               <Button size="icon" className={cn("h-8 w-8", isSequencePlaying ? "bg-red-500 hover:bg-red-600" : "bg-primary text-primary-foreground")} onClick={() => {
+                                  setIsSequencePlaying(!isSequencePlaying);
+                               }}>
+                                  {isSequencePlaying ? (
+                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                                  ) : (
+                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                  )}
+                               </Button>
+
+                               <Button variant="ghost" size="icon" className="h-8 w-8" disabled={currentFrameIndex === (sequences.find(s => s.id === activeSequenceId)?.frames.length || 0) - 1} onClick={() => {
+                                  const next = currentFrameIndex + 1;
+                                  setCurrentFrameIndex(next);
+                                  const frame = sequences.find(s => s.id === activeSequenceId)?.frames[next];
+                                  if (frame) window.dispatchEvent(new CustomEvent("playbook:diagram:apply-drill", { detail: { drill: { diagram: frame.state } } }));
+                               }}>
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5 4l10 8-10 8V4zM19 19h-2V5h2v14z"/></svg>
+                               </Button>
                             </div>
-                         ))}
+                         </div>
+
+                         {/* Timeline Strip */}
+                         <div className="flex gap-2 overflow-x-auto p-1 custom-scrollbar snap-x">
+                            {sequences.find(s => s.id === activeSequenceId)?.frames.map((f, i) => (
+                               <button 
+                                  key={f.id} 
+                                  className={cn(
+                                     "shrink-0 w-16 h-12 rounded-lg border-2 flex flex-col items-center justify-center transition-all snap-center",
+                                     currentFrameIndex === i 
+                                        ? "bg-primary/10 border-primary text-primary" 
+                                        : "bg-secondary/50 border-transparent hover:bg-secondary text-muted-foreground hover:text-foreground"
+                                  )}
+                                  onClick={() => {
+                                     setCurrentFrameIndex(i);
+                                     window.dispatchEvent(new CustomEvent("playbook:diagram:apply-drill", { detail: { drill: { diagram: f.state } } }));
+                                  }}
+                               >
+                                  <span className="text-[10px] font-black uppercase tracking-wider">Beat</span>
+                                  <span className="text-sm font-bold leading-none">{i + 1}</span>
+                               </button>
+                            ))}
+                            <button 
+                               onClick={() => {
+                                  setSequences(prev => prev.map(s => {
+                                     if (s.id !== activeSequenceId) return s;
+                                     // Clone current state or start fresh?
+                                     // "Construction" mode implies cloning current to continue movement.
+                                     const currentDiagram = latestCanvasState.current || { nodes: [], paths: [] };
+                                     const newFrame = { id: nanoid(), duration: 2, state: JSON.parse(JSON.stringify(currentDiagram)) };
+                                     return { ...s, frames: [...s.frames, newFrame] };
+                                  }));
+                                  // Auto-advance to new frame
+                                  setTimeout(() => {
+                                     const seq = sequences.find(s => s.id === activeSequenceId); // re-fetch to be safe?
+                                     if (seq) setCurrentFrameIndex(seq.frames.length); // length will increase
+                                  }, 0);
+                               }}
+                               className="shrink-0 w-12 h-12 rounded-lg border border-dashed border-border flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary hover:bg-primary/5 transition-all"
+                               title="Add Beat"
+                            >
+                               <span className="text-xl">+</span>
+                            </button>
+                         </div>
                       </div>
                   </div>
                )}
