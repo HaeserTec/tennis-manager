@@ -17,7 +17,6 @@ interface LockerRoomProps {
   onDeletePlayer: (playerId: string) => void;
   onAssignDrill: (playerId: string, drillId: string) => void;
   onUnassignDrill: (playerId: string, drillId: string) => void;
-  onUploadFile?: (bucket: string, file: File) => Promise<string | null>;
   initialSelectedPlayerId?: string | null;
 }
 
@@ -42,7 +41,7 @@ const AVATAR_COLORS = [
 
 const getRandomColor = () => AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 
-export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAddPlayer, onUpsertClient, onDeletePlayer, onAssignDrill, onUnassignDrill, onUploadFile, initialSelectedPlayerId }: LockerRoomProps) {
+export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAddPlayer, onUpsertClient, onDeletePlayer, onAssignDrill, onUnassignDrill, initialSelectedPlayerId }: LockerRoomProps) {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const listPanelRef = useRef<HTMLDivElement | null>(null);
@@ -205,6 +204,59 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
   return (
     <div className="flex flex-col md:flex-row h-full overflow-hidden bg-background text-foreground animate-in fade-in duration-300 relative">
       
+      {/* ADD PLAYER MODAL */}
+      {isAddModalOpen && (
+         <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-6" onClick={e => e.stopPropagation()}>
+               <div className="space-y-1">
+                  <h3 className="text-xl font-black tracking-tight">New Recruit</h3>
+                  <p className="text-sm text-muted-foreground">Add a player and link their guardian account.</p>
+               </div>
+               
+               <div className="space-y-4">
+                  <div className="space-y-2">
+                     <label className="text-[10px] font-bold uppercase tracking-widest text-primary">Player Details</label>
+                     <Input 
+                        autoFocus
+                        placeholder="Player Name (e.g. Timmy)" 
+                        value={newPlayerName} 
+                        onChange={e => setNewPlayerName(e.target.value)} 
+                        className="bg-background border-border h-11"
+                     />
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-border">
+                     <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Parent / Account Holder (Optional)</label>
+                     <div className="grid grid-cols-2 gap-3">
+                        <Input 
+                           placeholder="Parent Name" 
+                           value={newParentName} 
+                           onChange={e => setNewParentName(e.target.value)} 
+                           className="bg-background border-border"
+                        />
+                        <Input 
+                           placeholder="Phone Number" 
+                           value={newParentPhone} 
+                           onChange={e => setNewParentPhone(e.target.value)} 
+                           className="bg-background border-border"
+                        />
+                     </div>
+                     <p className="text-[10px] text-muted-foreground italic">
+                        *Entering a name here will automatically create a linked Client Account.
+                     </p>
+                  </div>
+               </div>
+
+               <div className="flex gap-3 pt-2">
+                  <Button variant="ghost" className="flex-1" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
+                  <Button className="flex-1 font-bold" onClick={confirmCreatePlayer} disabled={!newPlayerName.trim()}>
+                     Create Profile
+                  </Button>
+               </div>
+            </div>
+         </div>
+      )}
+
       {/* List Panel */}
       <div
         ref={listPanelRef}
@@ -238,7 +290,6 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
            </div>
            <div className="relative">
               <Input 
-                aria-label="Search players"
                 placeholder="Search players..." 
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
@@ -320,7 +371,6 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
               onBack={() => setSelectedPlayerId(null)}
               onAssignDrill={onAssignDrill}
               onUnassignDrill={onUnassignDrill}
-              onUploadFile={onUploadFile}
            />
         ) : (
            <AcademyCourtView 
@@ -330,72 +380,11 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
            />
         )}
       </div>
-
-      {/* ADD PLAYER MODAL */}
-      {isAddModalOpen && (
-         <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-6" onClick={e => e.stopPropagation()}>
-               <div className="space-y-1">
-                  <h3 className="text-xl font-black tracking-tight">New Recruit</h3>
-                  <p className="text-sm text-muted-foreground">Add a player and link their guardian account.</p>
-               </div>
-               
-               <div className="space-y-4">
-                  <div className="space-y-2">
-                     <label htmlFor="new-player-name" className="text-[10px] font-bold uppercase tracking-widest text-primary">Player Details</label>
-                     <Input 
-                        id="new-player-name"
-                        name="new-player-name"
-                        autoFocus
-                        placeholder="Player Name (e.g. Timmy)" 
-                        value={newPlayerName} 
-                        onChange={e => setNewPlayerName(e.target.value)} 
-                        className="bg-background border-border h-11"
-                     />
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t border-border">
-                     <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Parent / Account Holder (Optional)</label>
-                     <div className="grid grid-cols-2 gap-3">
-                        <Input 
-                           id="new-parent-name"
-                           name="new-parent-name"
-                           aria-label="Parent Name"
-                           placeholder="Parent Name" 
-                           value={newParentName} 
-                           onChange={e => setNewParentName(e.target.value)} 
-                           className="bg-background border-border"
-                        />
-                        <Input 
-                           id="new-parent-phone"
-                           name="new-parent-phone"
-                           aria-label="Parent Phone"
-                           placeholder="Phone Number" 
-                           value={newParentPhone} 
-                           onChange={e => setNewParentPhone(e.target.value)} 
-                           className="bg-background border-border"
-                        />
-                     </div>
-                     <p className="text-[10px] text-muted-foreground italic">
-                        *Entering a name here will automatically create a linked Client Account.
-                     </p>
-                  </div>
-               </div>
-
-               <div className="flex gap-3 pt-2">
-                  <Button variant="ghost" className="flex-1" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-                  <Button className="flex-1 font-bold" onClick={confirmCreatePlayer} disabled={!newPlayerName.trim()}>
-                     Create Profile
-                  </Button>
-               </div>
-            </div>
-         </div>
-      )}
     </div>
   );
 }
 
-function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, onDelete, onBack, onAssignDrill, onUnassignDrill, onUploadFile }: any) {
+function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, onDelete, onBack, onAssignDrill, onUnassignDrill }: any) {
    const assignedDrillsData = drills.filter((d: Drill) => player.assignedDrills.includes(d.id));
    const fileInputRef = useRef<HTMLInputElement>(null);
    const [showColors, setShowColors] = useState(false);
@@ -418,27 +407,9 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
       });
    };
 
-   const updateEquipment = (key: string, value: string) => {
-      onUpdate({
-         ...player,
-         equipment: { ...(player.equipment || {}), [key]: value },
-         updatedAt: Date.now()
-      });
-   };
-
-   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      
-      if (onUploadFile) {
-         const url = await onUploadFile('avatars', file);
-         if (url) {
-            onUpdate({ ...player, avatarUrl: url, updatedAt: Date.now() });
-            return;
-         }
-      }
-
-      // Fallback
       const reader = new FileReader();
       reader.onloadend = () => {
          onUpdate({ ...player, avatarUrl: reader.result as string, updatedAt: Date.now() });
@@ -654,6 +625,18 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
                            <PBMetric label="Attendance Streak" unit="sessions" value={player.pbs?.attendanceStreak} onChange={v => handleNestedUpdate('pbs', 'attendanceStreak', parseInt(v))} icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11"></polyline></svg>} />
                         </div>
                      </Section>
+                     <Section title="Attendance Heatmap">
+                        <div className="p-6 rounded-3xl border border-border bg-card/20 space-y-6">
+                           <div className="flex items-center justify-between">
+                              <div className="flex flex-wrap gap-1.5">{Array.from({ length: 28 }).map((_, i) => {
+                                 const date = new Date(); date.setDate(date.getDate() - (27 - i));
+                                 const isAttended = player.attendance?.some((ts: number) => new Date(ts).toDateString() === date.toDateString());
+                                 return <div key={i} className={cn("h-5 w-5 rounded-md", isAttended ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" : "bg-secondary")} title={date.toDateString()} />;
+                              })}</div>
+                              <Button size="sm" onClick={handleCheckIn} className="bg-emerald-500 hover:bg-emerald-600 text-white font-black text-[10px] tracking-widest h-10 px-6 rounded-xl">CHECK-IN</Button>
+                           </div>
+                        </div>
+                     </Section>
                      <Section title="Technical Growth">
                         <textarea className="w-full h-32 bg-card/30 border border-border rounded-2xl p-5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none leading-relaxed text-foreground no-scrollbar" placeholder="Technical progression notes..." value={player.analysisNotes || ''} onChange={e => onUpdate({...player, analysisNotes: e.target.value})} />
                      </Section>
@@ -821,10 +804,10 @@ function Section({ title, children }: { title: string, children: React.ReactNode
 
 function Field({ label, children }: { label: string, children: React.ReactNode }) {
    return (
-      <label className="space-y-2 block cursor-pointer">
-         <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">{label}</span>
+      <div className="space-y-2">
+         <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">{label}</label>
          {children}
-      </label>
+      </div>
    );
 }
 
@@ -837,7 +820,6 @@ function PBMetric({ label, unit, value, onChange, icon }: any) {
                <div className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">{label}</div>
                <div className="flex items-baseline gap-1">
                   <Input 
-                     aria-label={label}
                      variant="ghost" 
                      className="h-auto p-0 text-xl font-black w-16 bg-transparent border-none focus-visible:ring-0" 
                      value={value || ''} 
