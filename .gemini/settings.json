@@ -1,12 +1,8 @@
 {
   "mcpServers": {
     "supabase": {
-      "command": "npx -y @supabase/mcp-server-supabase",
-      "args": [],
-      "env": {
-        "SUPABASE_URL": "https://tdzdicbqpjjnezmbjqko.supabase.co",
-        "SUPABASE_KEY": "sb_publishable_igR7sbMYfjFAtP-1jqrMRA_Ug2K6y0b"
-      }
+      "url": "https://mcp.supabase.com/mcp?project_ref=qccgmxawpquunlcmohek",
+      "type": "http"
     }
   }
 }
