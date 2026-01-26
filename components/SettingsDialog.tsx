@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn, nanoid } from '@/lib/utils';
-import { X, MapPin, Plus, Trash2, Settings, Globe, RefreshCw, Cloud, Download } from 'lucide-react';
+import { X, MapPin, Plus, Trash2, Settings, Globe, RefreshCw, Cloud, Download, Upload } from 'lucide-react';
 import type { SessionType, LocationConfig } from '@/lib/playbook';
 
 interface SettingsDialogProps {
@@ -15,9 +15,10 @@ interface SettingsDialogProps {
   onSetTheme: (t: 'dark' | 'light' | 'midnight') => void;
   onForceSync?: () => Promise<void>;
   onBackup?: () => void;
+  onImport?: (data: any) => void;
 }
 
-export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, theme, onSetTheme, onForceSync, onBackup }: SettingsDialogProps) {
+export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, theme, onSetTheme, onForceSync, onBackup, onImport }: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<'general' | 'academy'>('academy');
   const [newLocName, setNewLocName] = useState('');
   const [newLocRate, setNewLocRate] = useState('');
@@ -266,15 +267,46 @@ export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, 
                       </div>
                       <div className="text-xs text-muted-foreground">Download a full local copy of your data.</div>
                     </div>
-                    <Button 
-                       size="sm" 
-                       variant="secondary" 
-                       onClick={onBackup} 
-                       className="gap-2"
-                    >
-                       <Download className="w-4 h-4" />
-                       Download Backup
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button 
+                         size="sm" 
+                         variant="secondary" 
+                         onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = '.json';
+                            input.onchange = (e) => {
+                               const file = (e.target as HTMLInputElement).files?.[0];
+                               if (!file) return;
+                               const reader = new FileReader();
+                               reader.onload = (re) => {
+                                  try {
+                                     const data = JSON.parse(re.target?.result as string);
+                                     if (onImport) onImport(data);
+                                     alert("Data imported successfully!");
+                                  } catch (err) {
+                                     alert("Failed to parse backup file.");
+                                  }
+                               };
+                               reader.readAsText(file);
+                            };
+                            input.click();
+                         }} 
+                         className="gap-2"
+                      >
+                         <Upload className="w-4 h-4" />
+                         Import
+                      </Button>
+                      <Button 
+                         size="sm" 
+                         variant="secondary" 
+                         onClick={onBackup} 
+                         className="gap-2"
+                      >
+                         <Download className="w-4 h-4" />
+                         Download
+                      </Button>
+                    </div>
                   </div>
                 </div>
 

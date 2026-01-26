@@ -12,7 +12,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key'
+  supabaseAnonKey || 'placeholder-key',
+  {
+    auth: {
+      persistSession: !!supabaseUrl && !!supabaseAnonKey,
+      autoRefreshToken: !!supabaseUrl && !!supabaseAnonKey,
+      detectSessionInUrl: !!supabaseUrl && !!supabaseAnonKey,
+    },
+  }
 );
 
 export const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey;

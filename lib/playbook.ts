@@ -128,6 +128,9 @@ export interface TrainingSession {
   // Instance-specific overrides
   notes?: string;
   
+  // Link recurring sessions together
+  seriesId?: string;
+
   createdAt: number;
   updatedAt: number;
 }

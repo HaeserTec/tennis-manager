@@ -7,8 +7,7 @@ import { nanoid, safeJsonParse, nowMs } from './utils';
 import { supabase } from './supabase';
 
 // Check if Supabase is configured
-// FORCE DISABLED: To prevent network errors for user
-const isSupabaseEnabled = false; // Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
+const isSupabaseEnabled = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 
 // --- Default Data / Constants ---
 
@@ -108,6 +107,7 @@ interface DataContextType {
   upsertLog: (log: SessionLog) => void;
   uploadFile: (bucket: string, file: File) => Promise<string | null>;
   forceSync: () => Promise<void>;
+  importData: (data: any) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -414,6 +414,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const importData = useCallback((data: any) => {
+    if (!data) return;
+    if (data.drills) setDrills(data.drills);
+    if (data.templates) setTemplates(data.templates);
+    if (data.sequences) setSequences(data.sequences);
+    if (data.plans) setPlans(data.plans);
+    if (data.players) setPlayers(data.players);
+    if (data.clients) setClients(data.clients);
+    if (data.sessions) setSessions(data.sessions);
+    if (data.locations) setLocations(data.locations);
+    if (data.logs) setLogs(data.logs);
+    if (data.terms) setTerms(data.terms);
+    
+    // Trigger a sync after import to push to cloud if enabled
+    setTimeout(() => {
+      forceSync();
+    }, 1000);
+  }, [forceSync]);
+
   // Ref to hold latest state for sync (avoids infinite dependency loop)
 
   return (
@@ -435,7 +454,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addPlan, updatePlan, deletePlan,
       addPlayer, updatePlayer, deletePlayer,
       upsertClient, upsertSession, deleteSession, upsertLog, uploadFile,
-      forceSync
+      forceSync,
+      importData
     }}>
       {children}
     </DataContext.Provider>

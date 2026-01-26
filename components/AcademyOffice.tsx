@@ -278,28 +278,38 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
        const startDate = new Date(baseSession.date);
        const dates = generateValidDates(startDate, mode);
        
+       // Generate a persistent Series ID if one doesn't exist, to link these sessions forever.
+       const seriesId = baseSession.seriesId || (mode !== 'None' ? nanoid() : undefined);
+       
        let operationCount = 0;
 
        dates.forEach((d, idx) => {
           const dStr = getLocalISODate(d);
           
           // Should we update existing or create new?
-          const existing = sessions.find(s => s.date === dStr && s.startTime === baseSession.startTime && s.location === baseSession.location);
+          // We look for "collisions" in the same slot.
+          // Note: With the new Ghost Session fix, we technically support multiple sessions per slot.
+          // However, for "Recurring Series" logic, we usually want to 'claim' a slot or 'merge' into a specific session.
+          // For simplicity in this logic: If we find a session AT THIS TIME/LOC that is part of the SAME SERIES, update it.
+          // If we find a session that is unrelated, we create a new one (double booking) or merge if intended.
+          
+          // Let's refine: We are generating a series. We want to find "The Session In This Series At This Time"
+          const existingInSeries = sessions.find(s => s.seriesId === seriesId && s.date === dStr);
+          
+          // Fallback: If no series ID existed before, maybe we are "converting" a single session or looking for a slot match?
+          // If isUpdate is true, we might be dragging a session that WAS single but now we want to repeat it.
+          const existingSlot = sessions.find(s => s.date === dStr && s.startTime === baseSession.startTime && s.location === baseSession.location);
 
-          if (existing && isUpdate) {
-             // MERGE Logic
-             // If we are adding a player, sticky logic applies. 
-             // If this was a "Create" call, we skip existing unless we want to overwrite (safety: don't overwrite).
-             // Since this function handles new drops too, we need to be careful.
-             
-             // Simplification: If repeatMode is on, we are primarily "Filling Gaps" or "Applying Changes"
-             
-             // For "Drop Player" recursion:
-             const mergedIds = Array.from(new Set([...existing.participantIds, ...baseSession.participantIds]));
-             const newType = getStickyType(existing.type, mergedIds.length);
+          const target = existingInSeries || (isUpdate ? existingSlot : undefined);
+
+          if (target) {
+             // UPDATE / MERGE
+             const mergedIds = Array.from(new Set([...target.participantIds, ...baseSession.participantIds]));
+             const newType = getStickyType(target.type, mergedIds.length);
              
              onUpsertSession({
-                 ...existing,
+                 ...target,
+                 seriesId, // Ensure series ID is stamped
                  type: newType,
                  price: SESSION_PRICING[newType],
                  maxCapacity: SESSION_LIMITS[newType],
@@ -308,13 +318,13 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
              });
              operationCount++;
 
-          } else if (!existing) {
-             // CREATE Logic
-             // Generate a fresh ID for every future session
-             const newId = idx === 0 && baseSession.id ? baseSession.id : nanoid();
+          } else {
+             // CREATE NEW
+             const newId = (idx === 0 && baseSession.id && !isUpdate) ? baseSession.id : nanoid();
              onUpsertSession({
                  ...baseSession,
                  id: newId,
+                 seriesId, // Stamp the series ID
                  date: dStr,
                  updatedAt: Date.now()
              });
@@ -382,7 +392,8 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
       const player = players.find(p => p.id === draggedPlayerId);
       if (!player) return;
 
-      const targetSession = sessionMap.get(`${dropDateStr}::${dropHour}::${selectedLocation}`);
+      const targetSessions = sessionMap.get(`${dropDateStr}::${dropHour}::${selectedLocation}`);
+      const targetSession = targetSessions?.[0];
 
       if (targetSession) {
          // --- ADD TO EXISTING ---
@@ -490,8 +501,12 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
        const isRecurring = confirm("Delete this session?\nOK = This Session Only\nCancel = No, Cancel");
        // Standard delete
        if (isRecurring) {
-          if (confirm("Also delete all FUTURE sessions in this series? (Same time/day/location)")) {
-              // Recursive Delete
+          if (session.seriesId && confirm("Also delete all FUTURE sessions in this series? (Linked by Series ID)")) {
+             // Robust Series Delete
+             const targets = sessions.filter(s => s.seriesId === session.seriesId && new Date(s.date) >= new Date(session.date));
+             targets.forEach(t => onDeleteSession(t.id));
+          } else if (!session.seriesId && confirm("Also delete all FUTURE sessions in this series? (Same time/day/location)")) {
+              // Legacy Recursive Delete (Fall back to heuristics if no series ID)
               const dayOfWeek = new Date(session.date).getDay();
               const targets = sessions.filter(s => {
                   const sDate = new Date(s.date);
@@ -585,6 +600,10 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
                         <div className="space-y-1">
                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Time</label>
                            <Input type="time" value={editingSession.startTime} onChange={e => setEditingSession({...editingSession, startTime: e.target.value})} className="bg-background border-border" />
+                           {(() => {
+                              const h = parseInt(editingSession.startTime.split(':')[0]);
+                              if (!isNaN(h) && (h < 8 || h >= 20)) return <p className="text-[10px] text-amber-500 font-bold">⚠️ Outside working hours (08:00-20:00)</p>;
+                           })()}
                         </div>
                         <div className="space-y-1">
                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Location</label>
@@ -643,7 +662,14 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
 
                      <div className="space-y-1">
                         <label className="text-[10px] font-bold text-muted-foreground uppercase">Manual Override</label>
-                        <Select value={editingSession.type} onValueChange={(v: SessionType) => setEditingSession({...editingSession, type: v, price: SESSION_PRICING[v], maxCapacity: SESSION_LIMITS[v]})}>
+                        <Select value={editingSession.type} onValueChange={(v: SessionType) => {
+                           const newLimit = SESSION_LIMITS[v];
+                           if (editingSession.participantIds.length > newLimit) {
+                              alert(`Cannot change to ${v}: Current participants (${editingSession.participantIds.length}) exceed limit of ${newLimit}. Remove players first.`);
+                              return;
+                           }
+                           setEditingSession({...editingSession, type: v, price: SESSION_PRICING[v], maxCapacity: newLimit});
+                        }}>
                            <SelectTrigger className="bg-background border-border h-8 text-xs"><SelectValue /></SelectTrigger>
                            <SelectContent>
                               <SelectItem value="Private">Private (Max 1)</SelectItem>
@@ -898,16 +924,23 @@ function generateSmartBlocks(startHour: number, endHour: number, sessionMap: Map
    const activeHours = new Set<number>();
    const activeCapacities = new Map<number, number>();
 
+   // Force afternoon slots (13:00 - 20:00) to be visible/active
+   for (let h = 13; h < endHour; h++) {
+       activeHours.add(h);
+   }
+
    days.forEach(d => {
       const dateStr = getLocalISODate(d);
       for(let h=startHour; h<endHour; h++) {
          const key = `${dateStr}::${h}::${location}`;
-         const session = sessionMap.get(key);
+         const sessions = sessionMap.get(key);
          
-         if (session) {
+         if (sessions && sessions.length > 0) {
             activeHours.add(h);
             const currentMax = activeCapacities.get(h) || 0;
-            activeCapacities.set(h, Math.max(currentMax, session.participantIds.length || 1));
+            // Sum of participants to estimate visual height need
+            const totalParticipants = sessions.reduce((sum: number, s: any) => sum + (s.participantIds.length || 1), 0);
+            activeCapacities.set(h, Math.max(currentMax, totalParticipants));
          }
       }
    });
@@ -970,39 +1003,18 @@ function TimeTracker({ startHour, endHour }: { startHour: number, endHour: numbe
 function WeekView({ currentDate, sessionMap, onDrop, location, weekDays, onRemovePlayer, onEdit, onCreate, onGapClick, onDragSession, startHour, endHour }: any) {
    const blocks = useMemo(() => generateSmartBlocks(startHour, endHour, sessionMap, weekDays, location), [startHour, endHour, sessionMap, weekDays, location]);
 
-   // Calculate Time Position (Simple Percentage for Visual Flair)
-   const [timePos, setTimePos] = useState<number | null>(null);
+   // Real-time updates for the Tennis Ball Tracker
+   const [now, setNow] = useState(new Date());
    useEffect(() => {
-      const update = () => {
-         const now = new Date();
-         const h = now.getHours();
-         const m = now.getMinutes();
-         if (h >= startHour && h < endHour) {
-             const totalMinutes = (endHour - startHour) * 60;
-             const currentMinutes = ((h - startHour) * 60) + m;
-             setTimePos((currentMinutes / totalMinutes) * 100);
-         } else {
-             setTimePos(null);
-         }
-      };
-      update();
-      const i = setInterval(update, 60000);
+      const i = setInterval(() => setNow(new Date()), 60000); // Update every minute
       return () => clearInterval(i);
-   }, [startHour, endHour]);
+   }, []);
+
+   const currentHour = now.getHours();
+   const currentMinute = now.getMinutes();
 
    return (
       <div className="min-w-[640px] h-full flex flex-col relative">
-         {/* TENNIS BALL TRACKER (Absolute Overlay) */}
-         {timePos !== null && weekDays.some((d: Date) => d.toDateString() === new Date().toDateString()) && (
-            <div 
-               className="absolute left-[4rem] right-0 z-30 pointer-events-none flex items-center"
-               style={{ top: `calc(${timePos}% + 2.5rem)` }} // Offset for header
-            >
-               <div className="h-[2px] w-full bg-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-               <div className="absolute -left-3 text-lg animate-spin-slow">🥎</div>
-            </div>
-         )}
-
          {/* Header Row */}
          <div className="grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 bg-background/50 sticky top-0 z-10">
             <div className="border-r border-border/50 bg-card/30" />
@@ -1058,54 +1070,70 @@ function WeekView({ currentDate, sessionMap, onDrop, location, weekDays, onRemov
                }
 
                const time = `${block.hour}:00`;
-               
+               const isCurrentHour = block.hour === currentHour;
+               const minutesPct = (currentMinute / 60) * 100;
+
                return (
-                  <div key={time} className={cn("grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 transition-all", block.rowHeight)}>
+                  <div key={time} className={cn("grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 transition-all relative", block.rowHeight)}>
+                     {/* Row-Level Tennis Ball Tracker */}
+                     {isCurrentHour && weekDays.some((d: Date) => d.toDateString() === now.toDateString()) && (
+                        <div 
+                           className="absolute left-[4rem] right-0 z-30 pointer-events-none flex items-center"
+                           style={{ top: `${minutesPct}%` }}
+                        >
+                           <div className="h-[2px] w-full bg-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                           <div className="absolute -left-3 text-lg animate-spin-slow">🥎</div>
+                        </div>
+                     )}
+
                      <div className="border-r border-border/50 flex justify-center pt-2 bg-card/10">
                         <span className="text-xs font-mono text-muted-foreground">{time}</span>
                      </div>
                      {weekDays.map((day: Date, i: number) => {
                         const dateStr = getLocalISODate(day);
                         const isHoliday = SA_HOLIDAYS_2026.has(dateStr);
-                        const session = sessionMap.get(`${dateStr}::${block.hour}::${location}`);
+                        const sessions = sessionMap.get(`${dateStr}::${block.hour}::${location}`) || [];
                         
                         return (
                            <div 
                               key={i} 
-                              className={cn("border-r border-border/50 last:border-0 p-1 relative transition-colors", isHoliday ? "bg-magenta-500/5" : "hover:bg-primary/5")}
+                              className={cn("border-r border-border/50 last:border-0 p-1 relative transition-colors flex flex-col gap-1", isHoliday ? "bg-magenta-500/5" : "hover:bg-primary/5")}
                               onDragOver={e => !isHoliday && e.preventDefault()}
                               onDrop={e => !isHoliday && onDrop(e, day, time)}
                            >
-                              {session ? (
-                                 <div 
-                                    draggable
-                                    onDragStart={() => onDragSession(session.id)}
-                                    className="h-full bg-card/50 border border-border rounded-lg p-2 shadow-sm animate-in zoom-in duration-200 cursor-grab active:cursor-grabbing hover:border-primary/50 overflow-hidden flex flex-col"
-                                 >
-                                    <div className="flex justify-between items-start mb-1 shrink-0">
-                                       <div className="flex flex-col">
-                                          <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground">{session.type}</span>
-                                          <span className="text-[9px] font-mono opacity-50">{session.startTime}</span>
-                                       </div>
-                                       <button onClick={() => onEdit(session)} className="text-[10px] hover:text-primary shrink-0"><Edit2 className="w-2.5 h-3"/></button>
-                                    </div>
-                                    <div className="space-y-0.5 overflow-y-auto custom-scrollbar flex-1">
-                                       {session.participants.map((p: any) => (
-                                          <div key={p.id} className="flex items-center justify-between group/p text-[9px] leading-tight">
-                                             <div className="flex items-center gap-1 min-w-0">
-                                                <div className="w-3.5 h-3.5 rounded-full text-[7px] flex items-center justify-center font-bold text-white shrink-0" style={{ backgroundColor: p.avatar }}>{p.name.substring(0,1)}</div>
-                                                <span className="truncate">{p.name}</span>
-                                             </div>
-                                             <button 
-                                                onClick={(e) => { e.stopPropagation(); onRemovePlayer(session.id, p.id); }}
-                                                className="text-red-500 opacity-0 group-hover/p:opacity-100 shrink-0"
-                                             >
-                                                <X className="w-2.5 h-2.5" />
-                                             </button>
+                              {sessions.length > 0 ? (
+                                 sessions.map((session: any) => (
+                                    <div 
+                                       key={session.id}
+                                       draggable
+                                       onDragStart={() => onDragSession(session.id)}
+                                       className="w-full bg-card/50 border border-border rounded-lg p-2 shadow-sm animate-in zoom-in duration-200 cursor-grab active:cursor-grabbing hover:border-primary/50 overflow-hidden flex flex-col"
+                                    >
+                                       <div className="flex justify-between items-start mb-1 shrink-0">
+                                          <div className="flex flex-col">
+                                             <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground">{session.type}</span>
+                                             <span className="text-[9px] font-mono opacity-50">{session.startTime}</span>
                                           </div>
-                                       ))}
+                                          <button onClick={() => onEdit(session)} className="text-[10px] hover:text-primary shrink-0"><Edit2 className="w-2.5 h-3"/></button>
+                                       </div>
+                                       <div className="space-y-0.5 overflow-y-auto custom-scrollbar flex-1">
+                                          {session.participants.map((p: any) => (
+                                             <div key={p.id} className="flex items-center justify-between group/p text-[9px] leading-tight">
+                                                <div className="flex items-center gap-1 min-w-0">
+                                                   <div className="w-3.5 h-3.5 rounded-full text-[7px] flex items-center justify-center font-bold text-white shrink-0" style={{ backgroundColor: p.avatar }}>{p.name.substring(0,1)}</div>
+                                                   <span className="truncate">{p.name}</span>
+                                                </div>
+                                                <button 
+                                                   onClick={(e) => { e.stopPropagation(); onRemovePlayer(session.id, p.id); }}
+                                                   className="text-red-500 opacity-0 group-hover/p:opacity-100 shrink-0"
+                                                >
+                                                   <X className="w-2.5 h-2.5" />
+                                                </button>
+                                             </div>
+                                          ))}
+                                       </div>
                                     </div>
-                                 </div>
+                                 ))
                               ) : (
                                  !isHoliday && (
                                     <div 
@@ -1204,7 +1232,7 @@ function DayView({ currentDate, sessionMap, onDrop, location, onRemovePlayer, on
                }
 
                const time = `${block.hour}:00`;
-               const session = sessionMap.get(`${dateStr}::${block.hour}::${location}`);
+               const sessions = sessionMap.get(`${dateStr}::${block.hour}::${location}`) || [];
 
                return (
                   <div 
@@ -1216,33 +1244,36 @@ function DayView({ currentDate, sessionMap, onDrop, location, onRemovePlayer, on
                      <div className="w-20 shrink-0 border-r border-border/50 bg-secondary/20 flex items-center justify-center font-mono font-bold text-muted-foreground">
                         {time}
                      </div>
-                     <div className="flex-1 p-2 relative hover:bg-primary/5 transition-colors">
-                        {session ? (
-                           <div 
-                              draggable
-                              onDragStart={() => onDragSession(session.id)}
-                              onClick={() => onEdit(session)}
-                              className="h-full bg-card border border-border rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-primary/50 flex flex-col"
-                           >
-                              <div className="flex justify-between mb-2 shrink-0">
-                                 <div className="font-bold text-sm">{session.type} Session</div>
-                                 <div className="text-xs text-muted-foreground">{session.participants.length} / {session.maxCapacity}</div>
+                     <div className="flex-1 p-2 relative hover:bg-primary/5 transition-colors flex flex-col gap-2">
+                        {sessions.length > 0 ? (
+                           sessions.map((session: any) => (
+                              <div 
+                                 key={session.id}
+                                 draggable
+                                 onDragStart={() => onDragSession(session.id)}
+                                 onClick={() => onEdit(session)}
+                                 className="flex-1 bg-card border border-border rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-primary/50 flex flex-col min-h-0"
+                              >
+                                 <div className="flex justify-between mb-2 shrink-0">
+                                    <div className="font-bold text-sm">{session.type} Session</div>
+                                    <div className="text-xs text-muted-foreground">{session.participants.length} / {session.maxCapacity}</div>
+                                 </div>
+                                 <div className="flex gap-2 flex-wrap overflow-y-auto custom-scrollbar flex-1 content-start">
+                                    {session.participants.map((p: any) => (
+                                       <div key={p.id} className="flex items-center gap-1.5 bg-secondary px-2 py-1 rounded-full border border-border h-fit">
+                                          <div className="w-4 h-4 rounded-full text-[8px] flex items-center justify-center font-bold text-white" style={{ backgroundColor: p.avatarColor }}>{p.name.substring(0,1)}</div>
+                                          <span className="text-xs font-medium">{p.name}</span>
+                                          <button 
+                                             onClick={(e) => { e.stopPropagation(); onRemovePlayer(session.id, p.id); }}
+                                             className="ml-1 text-muted-foreground hover:text-red-500"
+                                          >
+                                             <X className="w-3 h-3" />
+                                          </button>
+                                       </div>
+                                    ))}
+                                 </div>
                               </div>
-                              <div className="flex gap-2 flex-wrap overflow-y-auto custom-scrollbar flex-1 content-start">
-                                 {session.participants.map((p: any) => (
-                                    <div key={p.id} className="flex items-center gap-1.5 bg-secondary px-2 py-1 rounded-full border border-border h-fit">
-                                       <div className="w-4 h-4 rounded-full text-[8px] flex items-center justify-center font-bold text-white" style={{ backgroundColor: p.avatarColor }}>{p.name.substring(0,1)}</div>
-                                       <span className="text-xs font-medium">{p.name}</span>
-                                       <button 
-                                          onClick={(e) => { e.stopPropagation(); onRemovePlayer(session.id, p.id); }}
-                                          className="ml-1 text-muted-foreground hover:text-red-500"
-                                       >
-                                          <X className="w-3 h-3" />
-                                       </button>
-                                    </div>
-                                 ))}
-                              </div>
-                           </div>
+                           ))
                         ) : (
                            !isHoliday && (
                               <div 
@@ -1299,14 +1330,18 @@ function generateCalendarDays(currentDate: Date) {
 function AccountsWorkspace({ clients, players, onUpsertClient }: { clients: Client[], players: Player[], onUpsertClient: (c: Client) => void }) {
    const [q, setQ] = useState('');
    const [activeClientId, setActiveClientId] = useState<string | null>(null); // For detail/payment view
+   
+   // Create Modal State
+   const [isCreateOpen, setIsCreateOpen] = useState(false);
+   const [newClientName, setNewClientName] = useState("");
+
    const filtered = clients.filter(c => c.name.toLowerCase().includes(q.toLowerCase()));
 
-   const handleCreateClient = () => {
-      const name = prompt("Client Name:");
-      if (!name) return;
+   const handleSaveClient = () => {
+      if (!newClientName.trim()) return;
       onUpsertClient({
          id: nanoid(),
-         name,
+         name: newClientName.trim(),
          email: "",
          phone: "",
          status: "Active",
@@ -1314,6 +1349,8 @@ function AccountsWorkspace({ clients, players, onUpsertClient }: { clients: Clie
          updatedAt: Date.now(),
          payments: []
       });
+      setIsCreateOpen(false);
+      setNewClientName("");
    };
 
    // If a client is selected for editing/payment details
@@ -1331,7 +1368,36 @@ function AccountsWorkspace({ clients, players, onUpsertClient }: { clients: Clie
    }
 
    return (
-      <div className="p-8 max-w-6xl mx-auto h-full overflow-y-auto animate-in fade-in duration-500">
+      <div className="p-8 max-w-6xl mx-auto h-full overflow-y-auto animate-in fade-in duration-500 relative">
+         {/* CREATE CLIENT MODAL */}
+         {isCreateOpen && (
+            <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+               <div className="w-full max-w-sm bg-card border border-border rounded-xl shadow-2xl p-6 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between mb-4">
+                     <h3 className="font-bold text-lg">Add New Client</h3>
+                     <Button variant="ghost" size="icon" onClick={() => setIsCreateOpen(false)}><X className="w-4 h-4" /></Button>
+                  </div>
+                  <div className="space-y-4">
+                     <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Client Name</label>
+                        <Input 
+                           autoFocus 
+                           placeholder="e.g. John Doe" 
+                           value={newClientName}
+                           onChange={e => setNewClientName(e.target.value)}
+                           onKeyDown={e => e.key === 'Enter' && handleSaveClient()}
+                           className="bg-background border-border"
+                        />
+                     </div>
+                     <div className="flex justify-end gap-2 pt-2">
+                        <Button variant="ghost" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSaveClient} disabled={!newClientName.trim()} className="font-bold">Create Account</Button>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         )}
+
          <div className="flex items-center justify-between mb-8">
             <div>
                <h2 className="text-3xl font-black tracking-tight">Client Accounts</h2>
@@ -1347,7 +1413,7 @@ function AccountsWorkspace({ clients, players, onUpsertClient }: { clients: Clie
                      onChange={e => setQ(e.target.value)}
                   />
                </div>
-               <Button onClick={handleCreateClient} className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl shadow-lg shadow-primary/20">
+               <Button onClick={() => setIsCreateOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl shadow-lg shadow-primary/20">
                   <Plus className="w-4 h-4 mr-2" /> Add Client
                </Button>
             </div>
@@ -1407,36 +1473,28 @@ function ClientDetailView({ client, players, onBack, onUpdate }: { client: Clien
    const [amount, setAmount] = useState("");
    const [note, setNote] = useState("");
    const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA'));
-   const [proofFile, setProofFile] = useState<{ name: string, data: string } | null>(null);
+   const [proofFile, setProofFile] = useState<{ name: string } | null>(null);
    const fileInputRef = React.useRef<HTMLInputElement>(null);
 
    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-
-      if (file.size > 500 * 1024) {
-         alert("File is too large! Please attach a file smaller than 500KB.");
-         return;
-      }
-
-      const reader = new FileReader();
-      reader.onloadend = () => {
-         setProofFile({ name: file.name, data: reader.result as string });
-      };
-      reader.readAsDataURL(file);
+      // PERFORMANCE SAFEGUARD: We only store the filename, not the binary data.
+      // Storing Base64 blobs in local JSON causes the app to freeze/crash.
+      setProofFile({ name: file.name });
    };
 
    const handleAddPayment = () => {
       const val = parseFloat(amount);
-      if (!val) return;
+      if (isNaN(val)) return; // Allow 0.00 (e.g. Waiver/Scholarship)
       
       const newPayment: Payment = {
          id: nanoid(),
          date,
          amount: val,
          note,
-         reference: proofFile ? "Proof Attached" : "Manual Entry",
-         proofUrl: proofFile?.data
+         reference: proofFile ? `File: ${proofFile.name}` : "Manual Entry",
+         proofUrl: undefined // Disabled to prevent JSON bloat
       };
       
       onUpdate({
@@ -1449,7 +1507,6 @@ function ClientDetailView({ client, players, onBack, onUpdate }: { client: Clien
       setNote("");
       setProofFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      alert("Payment recorded successfully!");
    };
 
    const handleDeletePayment = (paymentId: string) => {
@@ -1507,7 +1564,7 @@ function ClientDetailView({ client, players, onBack, onUpdate }: { client: Clien
                               {proofFile ? (
                                  <span className="flex items-center gap-2 truncate text-xs"><Check className="w-3 h-3" /> {proofFile.name}</span>
                               ) : (
-                                 <span className="flex items-center gap-2 text-xs"><FileText className="w-3 h-3" /> Attach File (Max 500KB)</span>
+                                 <span className="flex items-center gap-2 text-xs"><FileText className="w-3 h-3" /> Link File Reference</span>
                               )}
                            </Button>
                            {proofFile && (
@@ -1516,6 +1573,7 @@ function ClientDetailView({ client, players, onBack, onUpdate }: { client: Clien
                               </Button>
                            )}
                         </div>
+                        <p className="text-[9px] text-muted-foreground mt-1 ml-1">* Filename only. Files are not stored in local version.</p>
                      </div>
 
                      <Button onClick={handleAddPayment} className="w-full font-bold">Add Payment</Button>
@@ -1550,19 +1608,6 @@ function ClientDetailView({ client, players, onBack, onUpdate }: { client: Clien
                            <div className="text-right flex flex-col items-end gap-1">
                               <div className="text-xs font-bold text-foreground">{p.note || "Payment Received"}</div>
                               <div className="flex items-center gap-2">
-                                 {p.proofUrl && (
-                                    <button 
-                                       onClick={() => {
-                                          const win = window.open();
-                                          if (win) {
-                                             win.document.write(`<iframe src="${p.proofUrl}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-                                          }
-                                       }}
-                                       className="text-[9px] bg-primary/20 text-primary px-2 py-0.5 rounded flex items-center gap-1 hover:bg-primary/30 transition-colors uppercase font-bold tracking-wider"
-                                    >
-                                       <FileText className="w-3 h-3" /> View Proof
-                                    </button>
-                                 )}
                                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{p.reference}</div>
                                  <button 
                                     onClick={() => handleDeletePayment(p.id)}

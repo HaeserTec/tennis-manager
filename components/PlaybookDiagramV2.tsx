@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { RadialMenu } from "@/components/RadialMenu";
-import { User, Circle, Triangle, ArrowUpRight, Undo2, Trash2, X, Zap } from "lucide-react";
+import { User, Circle, Triangle, ArrowUpRight, Undo2, Trash2, X } from "lucide-react";
 
 type NodeType =
   | "coach"
@@ -329,10 +329,6 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
   const [announceText, setAnnounceText] = React.useState<string>("");
   const [marquee, setMarquee] = React.useState<null | { origin: { x: number; y: number }; current: { x: number; y: number }; additive: boolean }>(null);
   const [quickArrowMode, setQuickArrowMode] = React.useState(false);
-  
-  // Rally Builder State
-  const [rallyMode, setRallyMode] = React.useState(false);
-  const [rallyStartPoint, setRallyStartPoint] = React.useState<{ x: number, y: number } | null>(null);
   
   // Animation State
   const [isPlaying, setIsPlaying] = React.useState(false);
@@ -1134,81 +1130,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
   const onStartSvg = (e: React.MouseEvent | React.TouchEvent) => {
       // Check button only for mouse events
-      if ('button' in e && e.button !== 0 && !drawingPath && !placingType && !rallyMode) return;
-
-      // Handle Rally Builder
-      if (rallyMode) {
-         const pt = getSvgPoint(e);
-         
-         // Right Click to Finish (handled by onContextMenu usually, but check buttons here)
-         if (('button' in e && e.button === 2) || e.shiftKey) {
-            setRallyMode(false);
-            setRallyStartPoint(null);
-            announceToScreenReader("Rally Builder Finished");
-            return;
-         }
-
-         if (!rallyStartPoint) {
-            setRallyStartPoint({ x: snap(pt.x), y: snap(pt.y) });
-            announceToScreenReader("Start Point Set");
-         } else {
-            const endPt = { x: snap(pt.x), y: snap(pt.y) };
-            const metrics = getCourtMetrics();
-            
-            let playerStart = { x: 0, y: 0 };
-            let isRedZone = false;
-
-            if (orientation === 'landscape') {
-               // Landscape: Court runs Left-Right.
-               // If target is Right (x > center), player is on Left Baseline.
-               // If target is Left (x < center), player is on Right Baseline.
-               const isTargetRight = endPt.x > metrics.centerX;
-               isRedZone = isTargetRight;
-               playerStart = {
-                  x: isTargetRight ? metrics.leftBaseX! : metrics.rightBaseX!,
-                  y: metrics.centerY
-               };
-            } else {
-               // Portrait: Court runs Top-Bottom.
-               // If target is Bottom (y > center), player is on Top Baseline.
-               const isTargetBottom = endPt.y > metrics.centerY;
-               isRedZone = !isTargetBottom;
-               playerStart = {
-                  x: metrics.centerX,
-                  y: isTargetBottom ? metrics.topBaseY! : metrics.bottomBaseY!
-               };
-            }
-
-            // Frame 1: Shot & Intercept
-            // ... (rest of logic)
-            const frame1: DiagramState = {
-               nodes: [
-                  { id: nanoid(), type: 'ball', x: rallyStartPoint.x, y: rallyStartPoint.y, r: 0 },
-                  { id: nanoid(), type: 'player', x: playerStart.x, y: playerStart.y, r: 0, color: isRedZone ? '#ef4444' : '#2563eb' }
-               ],
-               paths: [
-                  { id: nanoid(), points: [rallyStartPoint, endPt], color: '#ffd600', pathType: 'linear', lineStyle: 'solid', width: 2 }, // Ball
-                  { id: nanoid(), points: [playerStart, endPt], color: isRedZone ? '#ef4444' : '#2563eb', pathType: 'linear', lineStyle: 'dashed', width: 3 } // Player
-               ]
-            };
-            window.dispatchEvent(new CustomEvent("playbook:sequence:append-frame", { detail: { state: frame1 } }));
-
-            // Frame 2: Recovery
-            const frame2: DiagramState = {
-               nodes: [
-                  { id: nanoid(), type: 'player', x: endPt.x, y: endPt.y, r: 0, color: isRedZone ? '#ef4444' : '#2563eb' }
-               ],
-               paths: [
-                  { id: nanoid(), points: [endPt, playerStart], color: isRedZone ? '#ef4444' : '#2563eb', pathType: 'linear', lineStyle: 'dotted', width: 2 }
-               ]
-            };
-            window.dispatchEvent(new CustomEvent("playbook:sequence:append-frame", { detail: { state: frame2 } }));
-
-            setRallyStartPoint(endPt);
-            announceToScreenReader("Rally Shot Added");
-         }
-         return;
-      }
+      if ('button' in e && e.button !== 0 && !drawingPath && !placingType) return;
 
       if (drawingPath) {
         const pt = getSvgPoint(e);
@@ -2316,28 +2238,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                   <TooltipContent side="bottom">Curve Arrow</TooltipContent>
                 </Tooltip>
 
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={rallyMode ? "secondary" : "ghost"}
-                      size="icon"
-                      className={cn("h-7 w-7 rounded hover:bg-secondary", rallyMode && "bg-primary/20 text-primary")}
-                      onClick={() => {
-                         setRallyMode(!rallyMode);
-                         setDrawingPath(null);
-                         setPlacingType(null);
-                         setQuickArrowMode(false);
-                         announceToScreenReader(rallyMode ? "Rally Mode Off" : "Rally Mode On");
-                      }}
-                      aria-label="Rally Builder"
-                    >
-                      <Zap className="w-4 h-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Rally Builder</TooltipContent>
-                </Tooltip>
 
-                <div className="w-px h-6 bg-border mx-0.5" />
 
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -2816,14 +2717,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
               />
             ) : null}
             
-            {/* Rally Builder Preview */}
-            {rallyMode && rallyStartPoint && (
-               <g className="pointer-events-none animate-in zoom-in duration-200">
-                  <circle cx={rallyStartPoint.x} cy={rallyStartPoint.y} r={12} fill="#ffd600" opacity={0.5} />
-                  <circle cx={rallyStartPoint.x} cy={rallyStartPoint.y} r={16} stroke="#ffd600" strokeWidth={2} fill="none" strokeDasharray="4 4" className="animate-spin-slow" />
-                  <line x1={rallyStartPoint.x} y1={rallyStartPoint.y} x2={mousePos.x} y2={mousePos.y} stroke="#ffd600" strokeWidth={2} strokeDasharray="6 6" opacity={0.5} />
-               </g>
-            )}
+
             
             {state.nodes
               .filter((n) => n.type === "targetLine")
