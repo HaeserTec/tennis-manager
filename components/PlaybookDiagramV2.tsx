@@ -903,13 +903,6 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     setSelectedIds([...copiedNodes.map((n) => n.id), ...copiedPaths.map(p => p.id)]);
   };
 
-  const setRotation = (deg: number) => {
-    if (!selectedIds.length) return;
-    const idSet = new Set(selectedIds);
-    const nodes = state.nodes.map((n) => (idSet.has(n.id) ? { ...n, r: deg } : n));
-    commit({ ...state, nodes });
-  };
-
   const setSelectedColor = (color: string) => {
     if (!selectedIds.length) return;
     const idSet = new Set(selectedIds);
@@ -1140,7 +1133,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
             // Quick Arrow Mode (2-click)
             const pts = [...drawingPath.points, { x: snap(pt.x), y: snap(pt.y) }];
             commit({ ...state, paths: [...state.paths, { id: drawingPath.id, points: pts, color: arrowColor, pathType: 'linear', lineStyle: 'solid', width: 3 }] });
-            setDrawingPath({ id: nanoid(), points: [], pathType: 'linear', lineStyle: 'solid', width: 3 });
+            setDrawingPath(null);
             announceToScreenReader("Arrow created. Click to start next.");
             return;
         }
@@ -1817,98 +1810,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Add Elements Group - Preserved as accessible menu */}
           <div className="flex items-center gap-1 bg-card/60 p-1 rounded-lg border border-border/50">
-              <DropdownMenu open={addOpen} onOpenChange={setAddOpen}>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="secondary" size="sm" className="h-7 px-3 gap-2 bg-secondary text-foreground border-border hover:bg-muted hover:text-foreground hover:border-border transition-all shadow-sm">
-                    <span className="text-lg leading-none text-primary pb-0.5">+</span> Add
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56 bg-card border-border" align="start">
-                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wider">Objects</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => addNode("coach")}>Coach</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => addNode("player")}>Player</DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-border" />
-                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wider">Targets</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => addNode("target")}>Target Crosshair</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => addNode("targetBox")}>Target Box</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => addNode("targetLine")}>Target Line</DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-border" />
-                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wider">Batch Insert</DropdownMenuLabel>
-                  {/* Batch controls for Ball */}
-                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} disabled={remainingBalls <= 0}>
-                    <div className="flex w-full items-center justify-between gap-2">
-                      <span>Ball {remainingBalls <= 0 ? "(max)" : ""}</span>
-                      <div className="flex items-center gap-1 bg-secondary rounded p-0.5">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 w-5 p-0 hover:bg-muted"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setBatchBall((c) => Math.max(0, Math.min(c - 1, remainingBalls)));
-                          }}
-                        >
-                          -
-                        </Button>
-                        <span className="w-4 text-center text-xs font-mono">{batchBall}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 w-5 p-0 hover:bg-muted"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setBatchBall((c) => Math.max(0, Math.min(remainingBalls, c + 1)));
-                          }}
-                        >
-                          +
-                        </Button>
-                      </div>
-                    </div>
-                  </DropdownMenuItem>
-                   {/* Batch controls for Cone */}
-                   <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                    <div className="flex w-full items-center justify-between gap-2">
-                      <span>Cone</span>
-                      <div className="flex items-center gap-1 bg-secondary rounded p-0.5">
-                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0 hover:bg-muted" onClick={(e) => { e.stopPropagation(); setBatchCone(c => Math.max(0, c-1)); }}>-</Button>
-                        <span className="w-4 text-center text-xs font-mono">{batchCone}</span>
-                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0 hover:bg-muted" onClick={(e) => { e.stopPropagation(); setBatchCone(c => c+1); }}>+</Button>
-                      </div>
-                    </div>
-                  </DropdownMenuItem>
-                  {/* Batch controls for Text */}
-                  <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                    <div className="flex w-full items-center justify-between gap-2">
-                      <span>Text Label</span>
-                      <div className="flex items-center gap-1 bg-secondary rounded p-0.5">
-                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0 hover:bg-muted" onClick={(e) => { e.stopPropagation(); setBatchText(c => Math.max(0, c-1)); }}>-</Button>
-                        <span className="w-4 text-center text-xs font-mono">{batchText}</span>
-                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0 hover:bg-muted" onClick={(e) => { e.stopPropagation(); setBatchText(c => c+1); }}>+</Button>
-                      </div>
-                    </div>
-                  </DropdownMenuItem>
-                  <div className="p-2 pt-1 flex justify-end gap-2 mt-1">
-                    <Button
-                      size="sm"
-                      className="w-full h-7 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const toAddBalls = Math.max(0, Math.min(batchBall, remainingBalls));
-                        addBatch(toAddBalls, batchCone, batchText);
-                        setBatchBall(0);
-                        setBatchCone(0);
-                        setBatchText(0);
-                        setAddOpen(false);
-                      }}
-                    >
-                      Insert Selected
-                    </Button>
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
           {/* Templates Dropdown */}
           <div className="w-px h-4 bg-muted mx-1"></div>
           
@@ -2282,7 +2184,34 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
                   </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom">Target</TooltipContent>
+                  <TooltipContent side="bottom">Target Crosshair</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                  <Button variant={placingType === 'targetBox' ? 'secondary' : 'ghost'} size="icon" className={cn("h-7 w-7 rounded hover:bg-secondary hover:text-green-400 text-green-500", placingType === 'targetBox' && "bg-green-500/20")} onClick={() => setPlacingType('targetBox')} aria-label="Target Box tool">
+                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /></svg>
+                  </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Target Box</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                  <Button variant={placingType === 'targetLine' ? 'secondary' : 'ghost'} size="icon" className={cn("h-7 w-7 rounded hover:bg-secondary hover:text-green-400 text-green-500", placingType === 'targetLine' && "bg-green-500/20")} onClick={() => setPlacingType('targetLine')} aria-label="Target Line tool">
+                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12" strokeDasharray="4 4" /></svg>
+                  </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Target Line</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                  <Button variant={placingType === 'text' ? 'secondary' : 'ghost'} size="icon" className={cn("h-7 w-7 rounded hover:bg-secondary hover:text-foreground text-muted-foreground", placingType === 'text' && "bg-secondary text-foreground")} onClick={() => setPlacingType('text')} aria-label="Text tool">
+                     <span className="font-serif font-bold text-xs">T</span>
+                  </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Text Label</TooltipContent>
                 </Tooltip>
 
                 <div className="w-px h-6 bg-border mx-0.5" />
@@ -2338,8 +2267,8 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                         nodes: state.nodes.map((n) => (n.id === primarySelectedId ? { ...n, label: newLabel } : n)),
                       });
                     }}
-                    maxLength={10}
-                    style={{ width: `${Math.max(45, (primaryNode?.label?.length || 0) * 10 + 30)}px` }}
+                    maxLength={30}
+                    style={{ width: `${Math.max(45, (primaryNode?.label?.length || 0) * 8 + 40)}px` }}
                   />
                 </div>
               )}
@@ -2489,22 +2418,6 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                   e.stopPropagation();
                   finishArrow();
                }
-            }}
-            onDoubleClick={(e) => {
-                if (drawingPath) {
-                    if (drawingPath.pathType === 'linear' && !quickArrowMode) {
-                        finishArrow();
-                    }
-                    return;
-                }
-                const pt = getSvgPoint(e);
-                const rect = e.currentTarget.getBoundingClientRect();
-                setRadialMenu({
-                    x: e.clientX - rect.left,
-                    y: e.clientY - rect.top,
-                    svgX: pt.x,
-                    svgY: pt.y
-                });
             }}
             onMouseDown={onStartSvg}
             onTouchStart={onStartSvg}
@@ -2783,30 +2696,61 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
             
             {/* Animated Nodes Calculation */}
             {(() => {
-               // We calculate this inline or memoize it. 
-               // Given the structure of the return, it's easier to map state.nodes to a render-ready list.
+               // 1. Identify Chains (Map<PathID, NextPathID>)
+               const pathChains = new Map<string, string>();
+               state.paths.forEach(p1 => {
+                  const end = p1.points[p1.points.length - 1];
+                  if (!end) return;
+                  const nextPath = state.paths.find(p2 => {
+                     if (p1.id === p2.id) return false;
+                     const start = p2.points[0];
+                     if (!start) return false;
+                     const dx = start.x - end.x;
+                     const dy = start.y - end.y;
+                     return (dx*dx + dy*dy) < 1600; // 40px tolerance
+                  });
+                  if (nextPath) pathChains.set(p1.id, nextPath.id);
+               });
+
                const renderNodes = state.nodes.map(n => {
                   if (!isPlaying || animProgress === 0) return n;
                   
-                  // Find if this node is at the start of any path
-                  // We'll use a threshold of ~40px
-                  const attachedPath = state.paths.find(p => {
-                      // Restrict linear paths to only move players and balls
+                  const primaryPath = state.paths.find(p => {
                       if (p.pathType === 'linear' && n.type !== 'player' && n.type !== 'ball') return false;
-
                       if (p.points.length === 0) return false;
                       const start = p.points[0];
                       const dx = start.x - n.x;
                       const dy = start.y - n.y;
-                      return (dx*dx + dy*dy) < 1600; // 40^2
+                      return (dx*dx + dy*dy) < 1600;
                   });
                   
-                  if (attachedPath) {
-                      let pos;
-                      if (attachedPath.pathType === 'curve' && attachedPath.points.length === 3) {
-                          pos = getBezierPoint(animProgress, attachedPath.points[0], attachedPath.points[1], attachedPath.points[2]);
+                  if (primaryPath) {
+                      const secondaryPathId = pathChains.get(primaryPath.id);
+                      const secondaryPath = secondaryPathId ? state.paths.find(p => p.id === secondaryPathId) : null;
+                      
+                      let activePath = primaryPath;
+                      let localT = 0;
+
+                      if (secondaryPath) {
+                         // Chained Mode: 0-0.5 = Primary, 0.5-1.0 = Secondary
+                         if (animProgress <= 0.5) {
+                            activePath = primaryPath;
+                            localT = animProgress * 2;
+                         } else {
+                            activePath = secondaryPath;
+                            localT = (animProgress - 0.5) * 2;
+                         }
                       } else {
-                          pos = getPolylinePoint(animProgress, attachedPath.points);
+                         // Single Mode: 0-1.0 = Primary
+                         activePath = primaryPath;
+                         localT = animProgress;
+                      }
+
+                      let pos;
+                      if (activePath.pathType === 'curve' && activePath.points.length === 3) {
+                          pos = getBezierPoint(localT, activePath.points[0], activePath.points[1], activePath.points[2]);
+                      } else {
+                          pos = getPolylinePoint(localT, activePath.points);
                       }
                       return { ...n, x: pos.x, y: pos.y };
                   }
@@ -2901,11 +2845,22 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                   </g>
                 ) : n.type === "ladder" ? (
                   <g>
-                     {/* Horizontal Ladder Representation */}
-                     <rect x={-60} y={-15} width={120} height={30} fill="none" stroke={n.color || '#eab308'} strokeWidth={3} />
-                     <line x1={-30} y1={-15} x2={-30} y2={15} stroke={n.color || '#eab308'} strokeWidth={2} />
-                     <line x1={0} y1={-15} x2={0} y2={15} stroke={n.color || '#eab308'} strokeWidth={2} />
-                     <line x1={30} y1={-15} x2={30} y2={15} stroke={n.color || '#eab308'} strokeWidth={2} />
+                     {(() => {
+                        const width = n.size || 120;
+                        const halfW = width / 2;
+                        const rungs = Math.floor(width / 30);
+                        const rungNodes = [];
+                        for (let i = 1; i < rungs; i++) {
+                           const x = -halfW + (i * (width / rungs));
+                           rungNodes.push(<line key={i} x1={x} y1={-15} x2={x} y2={15} stroke={n.color || '#eab308'} strokeWidth={2} />);
+                        }
+                        return (
+                           <>
+                              <rect x={-halfW} y={-15} width={width} height={30} fill="none" stroke={n.color || '#eab308'} strokeWidth={3} />
+                              {rungNodes}
+                           </>
+                        );
+                     })()}
                   </g>
                 ) : (
                   // Fallback

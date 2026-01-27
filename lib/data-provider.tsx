@@ -55,6 +55,22 @@ function normalizeTemplate(t: DrillTemplate): DrillTemplate {
 
 // --- Context Types ---
 
+// Helper to convert strings
+const toSnakeCase = (str: string) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+const toCamelCase = (str: string) => str.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+
+const transformData = (obj: any, transformer: (s: string) => string): any => {
+    if (Array.isArray(obj)) return obj.map(v => transformData(v, transformer));
+    if (obj !== null && typeof obj === 'object') {
+        return Object.keys(obj).reduce((acc, key) => {
+          const newKey = transformer(key);
+          acc[newKey] = transformData(obj[key], transformer);
+          return acc;
+        }, {} as any);
+    }
+    return obj;
+};
+
 interface DataContextType {
   // State
   drills: Drill[];
@@ -196,12 +212,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
             if (remoteData && remoteData.length > 0) {
                 // Case A: Cloud has data -> Cloud wins (Download)
-                setter(remoteData);
+                // Transform snake_case (DB) -> camelCase (App)
+                const transformedRemote = transformData(remoteData, toCamelCase);
+                setter(transformedRemote);
             } else if (localData.length > 0) {
                 // Case B: Cloud is empty BUT Local has data -> Seed Cloud (Upload)
                 // Deduplicate: Ensure no duplicate IDs in payload
                 const uniqueData = Array.from(new Map(localData.map(item => [item.id, item])).values());
-                const sanitized = uniqueData.map(item => JSON.parse(JSON.stringify(item)));
+                
+                let sanitized: any[];
+                
+                if (tableName === 'locations') {
+                   sanitized = uniqueData.map(item => ({
+                      id: item.id,
+                      name: item.name,
+                      color: item.sessionType, // Map sessionType -> color
+                      courts: [] 
+                   }));
+                } else {
+                   // Transform camelCase (App) -> snake_case (DB)
+                   sanitized = uniqueData.map(item => {
+                      const transformed = transformData(JSON.parse(JSON.stringify(item)), toSnakeCase);
+                      // Remove user_id to let Supabase Auth handle ownership (RLS)
+                      delete transformed.user_id; 
+                      return transformed;
+                   });
+                }
                 
                 const { error: uploadError } = await supabase.from(tableName).upsert(sanitized, { onConflict: 'id' });
                 if (uploadError) {
@@ -262,12 +298,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // 4. Helper to Sync to Supabase
   const syncToSupabase = async (table: string, data: any, action: 'upsert' | 'delete') => {
     if (!isSupabaseEnabled) return;
+
     try {
       if (action === 'delete') {
         await supabase.from(table).delete().eq('id', data.id);
       } else {
-        // Remove undefined fields to avoid issues, or trust standard normalization
-        await supabase.from(table).upsert(data);
+        // Special transformations
+        let payload = transformData(data, toSnakeCase);
+        if (payload.user_id) delete payload.user_id; // Let DB handle auth ownership
+        
+        // Fix for Locations table mismatch
+        if (table === 'locations') {
+           // Map 'session_type' -> 'color' (or just drop it if schema doesn't support)
+           // Map 'default_rate' -> Drop or stash? 
+           // The SQL schema has: id, name, courts text[], color text
+           // TS has: id, name, defaultRate, sessionType
+           // We'll map sessionType to color for now to save SOMETHING
+           payload = {
+              id: data.id,
+              name: data.name,
+              color: data.sessionType, 
+              courts: [] // Default empty
+           };
+        }
+
+        await supabase.from(table).upsert(payload);
       }
     } catch (err) {
       console.error(`Failed to sync ${table}:`, err);

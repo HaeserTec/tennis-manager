@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn, nanoid } from '@/lib/utils';
-import type { Player, Client, Payment, TrainingSession, SessionType } from '@/lib/playbook';
+import type { Player, Client, Payment, TrainingSession, SessionType, LocationConfig } from '@/lib/playbook';
 import { 
   Check, X, Phone, Search, Calendar as CalendarIcon, Users, 
   Activity, Plus, Clock, FileText, Briefcase, DollarSign,
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { InsightsDashboard } from './InsightsDashboard';
 
 // Define LocationConfig locally if not imported
-import { LocationConfig } from '@/components/SettingsDialog';
+// import { LocationConfig } from '@/components/SettingsDialog';
 
 interface AcademyOfficeProps {
   players: Player[];
@@ -95,7 +95,7 @@ export function AcademyOffice({ players, locations, clients, sessions, onUpdateP
               </div>
            </div>
            <div className="hidden sm:block">
-              <h1 className="text-lg font-black uppercase tracking-tighter text-foreground bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">SessionPro</h1>
+              <h1 className="text-lg font-black uppercase tracking-tighter text-foreground bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">Admin</h1>
               <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Office Management</p>
            </div>
         </div>
@@ -207,10 +207,11 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
    }, [sessions, players]);
 
    const sessionMap = useMemo(() => {
-      const map = new Map<string, any>();
+      const map = new Map<string, any[]>();
       events.forEach(e => {
          const key = `${e.date}::${e.startHour}::${e.location}`;
-         map.set(key, e);
+         const existing = map.get(key) || [];
+         map.set(key, [...existing, e]);
       });
       return map;
    }, [events]);
@@ -367,17 +368,24 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
       const dropDateStr = getLocalISODate(date); 
       const dropHour = parseInt(time.split(':')[0]);
 
-      // CASE 1: Rescheduling Existing Session (Drag Session)
-      if (draggedSessionId) {
-         const session = sessions.find(s => s.id === draggedSessionId);
-         if (!session) return;
-         if (session.date === dropDateStr && session.startTime === time) {
+      // Retrieve IDs from dataTransfer (Robust Fallback)
+      const transferId = e.dataTransfer.getData('text/plain');
+      
+      // Determine if we are dragging a Session or a Player based on ID format/context
+      // or try to match against known IDs.
+      // Since we use the same type 'text/plain', we need to check both sources.
+      
+      // Check 1: Is it a Session ID?
+      const potentialSession = sessions.find(s => s.id === transferId || s.id === draggedSessionId);
+      
+      if (potentialSession) {
+         if (potentialSession.date === dropDateStr && potentialSession.startTime === time) {
             setDraggedSessionId(null);
             return;
          }
          // Simple move (non-recursive for safety unless asked, but usually move is one-off)
          onUpsertSession({
-            ...session,
+            ...potentialSession,
             date: dropDateStr,
             startTime: time,
             endTime: `${dropHour + 1}:00`,
@@ -387,9 +395,10 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
          return;
       }
 
-      // CASE 2: Add Player / Create Session
-      if (!draggedPlayerId) return;
-      const player = players.find(p => p.id === draggedPlayerId);
+      // Check 2: Is it a Player ID?
+      const potentialPlayerId = draggedPlayerId || transferId;
+      const player = players.find(p => p.id === potentialPlayerId);
+      
       if (!player) return;
 
       const targetSessions = sessionMap.get(`${dropDateStr}::${dropHour}::${selectedLocation}`);
@@ -808,7 +817,11 @@ function SchedulerWorkspace({ players, locations, sessions, onUpsertSession, onD
                      <div 
                         key={p.id}
                         draggable
-                        onDragStart={() => setDraggedPlayerId(p.id)}
+                        onDragStart={(e) => {
+                           e.dataTransfer.setData('text/plain', p.id);
+                           e.dataTransfer.effectAllowed = 'copy';
+                           setDraggedPlayerId(p.id);
+                        }}
                         onDragEnd={() => setDraggedPlayerId(null)}
                         className="flex items-center gap-3 p-2.5 rounded-lg bg-card border border-border hover:border-primary/50 cursor-grab active:cursor-grabbing group transition-all shadow-sm"
                      >
@@ -1106,7 +1119,12 @@ function WeekView({ currentDate, sessionMap, onDrop, location, weekDays, onRemov
                                     <div 
                                        key={session.id}
                                        draggable
-                                       onDragStart={() => onDragSession(session.id)}
+                                       onDragStart={(e) => {
+                                          e.dataTransfer.setData('text/plain', session.id);
+                                          e.dataTransfer.effectAllowed = 'move';
+                                          onDragSession(session.id);
+                                       }}
+                                       onDragEnd={() => onDragSession(null)}
                                        className="w-full bg-card/50 border border-border rounded-lg p-2 shadow-sm animate-in zoom-in duration-200 cursor-grab active:cursor-grabbing hover:border-primary/50 overflow-hidden flex flex-col"
                                     >
                                        <div className="flex justify-between items-start mb-1 shrink-0">
@@ -1250,7 +1268,12 @@ function DayView({ currentDate, sessionMap, onDrop, location, onRemovePlayer, on
                               <div 
                                  key={session.id}
                                  draggable
-                                 onDragStart={() => onDragSession(session.id)}
+                                 onDragStart={(e) => {
+                                    e.dataTransfer.setData('text/plain', session.id);
+                                    e.dataTransfer.effectAllowed = 'move';
+                                    onDragSession(session.id);
+                                 }}
+                                 onDragEnd={() => onDragSession(null)}
                                  onClick={() => onEdit(session)}
                                  className="flex-1 bg-card border border-border rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-primary/50 flex flex-col min-h-0"
                               >
@@ -1723,7 +1746,7 @@ function BookingsWorkspace({ clients, players, sessions }: { clients: Client[], 
                   </tbody>
                </table>
                <div style="margin-top:50px; font-size:11px; text-align:center; color:#999;">
-                  Generated by SessionPro • Von Gericke Tennis Academy
+                  Thank you for paying in advance! • Von Gericke Tennis Academy
                </div>
                <script>window.print();</script>
             </body>
