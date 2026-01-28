@@ -2714,7 +2714,16 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
                const renderNodes = state.nodes.map(n => {
                   if (!isPlaying || animProgress === 0) return n;
-                  
+
+                  // Sequential animation: Players in Phase 1 (0-0.5), Balls in Phase 2 (0.5-1.0)
+                  const isBall = n.type === 'ball';
+                  const isAnimatable = n.type === 'player' || n.type === 'coach' || n.type === 'ball';
+
+                  if (!isAnimatable) return n;
+
+                  // Balls wait for Phase 2, players/coaches animate in Phase 1
+                  if (isBall && animProgress < 0.5) return n;
+
                   const primaryPath = state.paths.find(p => {
                       if (p.pathType === 'linear' && n.type !== 'player' && n.type !== 'ball') return false;
                       if (p.points.length === 0) return false;
@@ -2723,27 +2732,37 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                       const dy = start.y - n.y;
                       return (dx*dx + dy*dy) < 1600;
                   });
-                  
+
                   if (primaryPath) {
                       const secondaryPathId = pathChains.get(primaryPath.id);
                       const secondaryPath = secondaryPathId ? state.paths.find(p => p.id === secondaryPathId) : null;
-                      
+
                       let activePath = primaryPath;
                       let localT = 0;
 
-                      if (secondaryPath) {
-                         // Chained Mode: 0-0.5 = Primary, 0.5-1.0 = Secondary
-                         if (animProgress <= 0.5) {
+                      // Calculate phase-adjusted progress
+                      let phaseProgress: number;
+                      if (isBall) {
+                         // Balls: 0.5-1.0 maps to 0-1
+                         phaseProgress = (animProgress - 0.5) * 2;
+                      } else {
+                         // Players: 0-0.5 maps to 0-1, then hold at 1
+                         phaseProgress = Math.min(1, animProgress * 2);
+                      }
+
+                      if (secondaryPath && !isBall) {
+                         // Chained Mode for players: split phaseProgress
+                         if (phaseProgress <= 0.5) {
                             activePath = primaryPath;
-                            localT = animProgress * 2;
+                            localT = phaseProgress * 2;
                          } else {
                             activePath = secondaryPath;
-                            localT = (animProgress - 0.5) * 2;
+                            localT = (phaseProgress - 0.5) * 2;
                          }
                       } else {
-                         // Single Mode: 0-1.0 = Primary
+                         // Single path mode
                          activePath = primaryPath;
-                         localT = animProgress;
+                         localT = phaseProgress;
                       }
 
                       let pos;

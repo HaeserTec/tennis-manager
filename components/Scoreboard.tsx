@@ -3,8 +3,9 @@ import { cn, nanoid, nowMs } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Player, SessionLog, Term, TrainingSession } from '@/lib/playbook';
-import { computeTotalScore, ScoreData, calculateAttendanceStreak } from '@/lib/analytics';
-import { ChevronLeft, ChevronRight, Edit2, CheckCircle2, Trophy, Flame, Target, Minus, Plus, ListOrdered, Medal, ArrowUpDown } from 'lucide-react';
+import { computeTotalScore, ScoreData, calculateAttendanceStreak, getPlayerProgressHistory } from '@/lib/analytics';
+import { ChevronLeft, ChevronRight, Edit2, CheckCircle2, Trophy, Flame, Target, Minus, Plus, ListOrdered, Medal, ArrowUpDown, ChevronDown, TrendingUp } from 'lucide-react';
+import { ProgressChart, Sparkline } from './ProgressChart';
 
 interface ScoreboardProps {
   players: Player[];
@@ -64,9 +65,13 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
         .filter(p => p.account?.status !== 'Inactive')
         .map(p => {
            const streak = calculateAttendanceStreak(p.id, sessions);
+           // Get last 5 sessions' total scores for sparkline
+           const progressHistory = getPlayerProgressHistory(p.id, logs);
+           const trendData = progressHistory.slice(-5).map(h => h.total);
            return {
               ...p,
               streak,
+              trendData,
               // Map PB stats for sorting/display
               backToBase: p.pbs?.backToBase ? Number(p.pbs.backToBase) : 0,
               longestRally: p.pbs?.longestRally || 0,
@@ -89,7 +94,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
            return 0;
         });
-  }, [players, sessions, sortConfig]);
+  }, [players, sessions, logs, sortConfig]);
 
   const progress = {
     logged: loggedPlayerIds.size,
@@ -177,7 +182,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                <div className="max-w-5xl mx-auto">
                   <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
                      {/* Table Header */}
-                     <div className="grid grid-cols-[3rem_2fr_1fr_1fr_1fr_1fr] md:grid-cols-[4rem_2fr_repeat(4,1fr)] bg-secondary/30 border-b border-border text-[10px] font-black uppercase tracking-widest text-muted-foreground sticky top-0 backdrop-blur-md z-10">
+                     <div className="grid grid-cols-[3rem_2fr_5rem_1fr] md:grid-cols-[4rem_2fr_repeat(5,1fr)] bg-secondary/30 border-b border-border text-[10px] font-black uppercase tracking-widest text-muted-foreground sticky top-0 backdrop-blur-md z-10">
                         <div className="p-4 text-center">#</div>
                         <div className="p-4 cursor-pointer hover:text-foreground flex items-center gap-1" onClick={() => handleSort('name')}>
                            Player <ArrowUpDown className="w-3 h-3" />
@@ -185,6 +190,9 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                         <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('backToBase')}>Base Speed</div>
                         <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('longestRally')}>Rally</div>
                         <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('firstServe')}>Serve %</div>
+                        <div className="p-4 text-center flex items-center justify-center gap-1" title="Last 5 sessions trend">
+                           <TrendingUp className="w-3 h-3 text-fuchsia-500" /> Trend
+                        </div>
                         <div className="p-4 text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-1" onClick={() => handleSort('streak')} title="Consecutive weeks with a past scheduled session">
                            <Flame className="w-3 h-3 text-orange-500" /> Streak
                         </div>
@@ -193,11 +201,11 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                      {/* Table Body */}
                      <div className="divide-y divide-border/50">
                         {leaderboardData.map((player, idx) => (
-                           <div key={player.id} className="grid grid-cols-[3rem_2fr_1fr_1fr_1fr_1fr] md:grid-cols-[4rem_2fr_repeat(4,1fr)] hover:bg-white/5 transition-colors group items-center">
+                           <div key={player.id} className="grid grid-cols-[3rem_2fr_5rem_1fr] md:grid-cols-[4rem_2fr_repeat(5,1fr)] hover:bg-white/5 transition-colors group items-center">
                               <div className="p-4 text-center font-black text-muted-foreground flex justify-center">
-                                 {idx === 0 ? <Medal className="w-5 h-5 text-yellow-400" /> : 
-                                  idx === 1 ? <Medal className="w-5 h-5 text-slate-400" /> : 
-                                  idx === 2 ? <Medal className="w-5 h-5 text-amber-700" /> : 
+                                 {idx === 0 ? <Medal className="w-5 h-5 text-yellow-400" /> :
+                                  idx === 1 ? <Medal className="w-5 h-5 text-slate-400" /> :
+                                  idx === 2 ? <Medal className="w-5 h-5 text-amber-700" /> :
                                   idx + 1}
                               </div>
                               <div className="p-4 flex items-center gap-3">
@@ -206,7 +214,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                                  </div>
                                  <div className="font-bold text-sm">{player.name}</div>
                               </div>
-                              
+
                               {/* Stats Columns */}
                               <div className="p-4 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground">
                                  {player.backToBase > 0 ? `${player.backToBase}s` : '-'}
@@ -217,7 +225,16 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                               <div className="p-4 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground">
                                  {player.firstServe > 0 ? `${player.firstServe}%` : '-'}
                               </div>
-                              
+
+                              {/* Trend Sparkline */}
+                              <div className="p-4 flex justify-center items-center">
+                                 {player.trendData.length >= 2 ? (
+                                    <Sparkline data={player.trendData} width={60} height={20} color="#d946ef" />
+                                 ) : (
+                                    <span className="text-muted-foreground text-xs">-</span>
+                                 )}
+                              </div>
+
                               <div className="p-4 text-center font-black text-orange-500 flex justify-center items-center gap-1">
                                  {player.streak} <span className="text-[10px] text-muted-foreground font-medium uppercase">Wks</span>
                               </div>
@@ -292,11 +309,12 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                <div className="hidden lg:flex flex-1 bg-card/20 items-stretch justify-center p-6 overflow-y-auto">
                   {activePlayer ? (
                      <div className="w-full max-w-2xl bg-background border border-border rounded-2xl shadow-xl flex flex-col h-fit">
-                        <LogForm 
-                           player={activePlayer} 
-                           existingLog={activeLog} 
-                           date={selectedDate} 
-                           onSave={(log) => onUpsertLog(log)} 
+                        <LogForm
+                           player={activePlayer}
+                           existingLog={activeLog}
+                           date={selectedDate}
+                           allLogs={logs}
+                           onSave={(log) => onUpsertLog(log)}
                            onCancel={() => setSelectedPlayerId(null)}
                            embedded={true}
                         />
@@ -317,10 +335,11 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
       {/* Mobile Drawer (Only for Daily View) */}
       {isMobileDrawerOpen && activePlayer && viewMode === 'daily' && (
          <div className="lg:hidden absolute inset-0 z-50 bg-background/95 backdrop-blur-md flex flex-col animate-in slide-in-from-bottom-full duration-300">
-             <LogForm 
+             <LogForm
                player={activePlayer}
                existingLog={activeLog}
                date={selectedDate}
+               allLogs={logs}
                onSave={(log) => { onUpsertLog(log); setIsMobileDrawerOpen(false); }}
                onCancel={() => setIsMobileDrawerOpen(false)}
              />
@@ -335,11 +354,17 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
 // The previous output of `read_file` showed them at the bottom.
 // I will use `replace` targeting the `Scoreboard` function specifically.
 
-function LogForm({ player, existingLog, date, onSave, onCancel, embedded = false }: { player: Player, existingLog?: SessionLog, date: string, onSave: (l: SessionLog) => void, onCancel: () => void, embedded?: boolean }) {
+function LogForm({ player, existingLog, date, allLogs, onSave, onCancel, embedded = false }: { player: Player, existingLog?: SessionLog, date: string, allLogs: SessionLog[], onSave: (l: SessionLog) => void, onCancel: () => void, embedded?: boolean }) {
    // Form State (Re-initialize when player changes)
    const [scores, setScores] = useState<ScoreData>({ tech: 1, consistency: 1, tactics: 1, movement: 1, coachability: 1 });
    const [anchors, setAnchors] = useState({ bestStreak: 0, serveIn: 5 });
    const [note, setNote] = useState("");
+   const [progressExpanded, setProgressExpanded] = useState(!embedded ? false : true); // Collapsed on mobile, expanded on desktop
+
+   // Get player's progress history (last 5 sessions)
+   const progressData = useMemo(() => {
+      return getPlayerProgressHistory(player.id, allLogs).slice(-5);
+   }, [player.id, allLogs]);
 
    // Effect to load existing log data when switching players
    useEffect(() => {
@@ -408,7 +433,39 @@ function LogForm({ player, existingLog, date, onSave, onCancel, embedded = false
 
          {/* Scrollable Content */}
          <div className="flex-1 overflow-y-auto p-6 space-y-8">
-            
+
+            {/* Progress Chart Section */}
+            <div className="space-y-3">
+               <button
+                  onClick={() => setProgressExpanded(!progressExpanded)}
+                  className="w-full flex items-center justify-between text-xs font-black uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+               >
+                  <span className="flex items-center gap-2">
+                     <div className="h-1 w-4 bg-fuchsia-500 rounded-full" />
+                     Progress (Last 5 Sessions)
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 transition-transform", progressExpanded && "rotate-180")} />
+               </button>
+
+               {progressExpanded && (
+                  <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+                     {progressData.length >= 2 ? (
+                        <div className="bg-card/50 border border-border/50 rounded-xl p-4">
+                           <ProgressChart data={progressData} height={180} showLegend={true} />
+                        </div>
+                     ) : (
+                        <div className="bg-card/50 border border-border/50 rounded-xl p-6 text-center">
+                           <p className="text-xs text-muted-foreground italic">
+                              Track progress after 2+ sessions
+                           </p>
+                        </div>
+                     )}
+                  </div>
+               )}
+            </div>
+
+            <div className="h-px bg-border/50" />
+
             {/* 5 Core Metrics */}
             <div className="space-y-4">
                <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-2">
