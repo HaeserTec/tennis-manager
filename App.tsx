@@ -818,7 +818,7 @@ export default function App() {
       </div>
 
       {/* List Panel (The "New" Sidebar) */}
-      {!isHome && appMode !== 'players' && appMode !== 'office' && appMode !== 'scoreboard' && (
+      {!isHome && appMode !== 'players' && appMode !== 'office' && appMode !== 'scoreboard' && appMode !== 'library' && (
          <div
             ref={listPanelRef}
             style={{ '--list-panel-width': `${listPanelWidth}px` } as React.CSSProperties}
@@ -1195,7 +1195,7 @@ export default function App() {
       {/* Main Content */}
       <div className={cn(
          "flex-1 flex flex-col min-w-0 bg-background relative",
-         !hasSelection && !isHome && appMode !== 'players' && appMode !== 'office' ? "hidden lg:flex" : "flex"
+         !hasSelection && !isHome && appMode !== 'players' && appMode !== 'office' && appMode !== 'scoreboard' && appMode !== 'library' ? "hidden lg:flex" : "flex"
       )}>
          {isHome ? (
             <HomeDashboard 

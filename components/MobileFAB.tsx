@@ -7,6 +7,8 @@ import {
   Activity, 
   Users, 
   LayoutTemplate, 
+  Library,
+  Briefcase,
   Menu,
   X,
   Sun,
@@ -127,6 +129,27 @@ export function MobileFAB({
            onClick={() => handleSelect(() => onNavigate('scoreboard'))}
            active={currentMode === 'scoreboard' && !isHome}
            color="text-yellow-400"
+        />
+        <FabItem 
+           label="Office" 
+           icon={<Briefcase className="w-5 h-5" />} 
+           onClick={() => handleSelect(() => onNavigate('office'))}
+           active={currentMode === 'office' && !isHome}
+           color="text-pink-400"
+        />
+        <FabItem 
+           label="Templates" 
+           icon={<LayoutTemplate className="w-5 h-5" />} 
+           onClick={() => handleSelect(() => onNavigate('templates'))}
+           active={currentMode === 'templates' && !isHome}
+           color="text-sky-400"
+        />
+        <FabItem 
+           label="Library" 
+           icon={<Library className="w-5 h-5" />} 
+           onClick={() => handleSelect(() => onNavigate('library'))}
+           active={currentMode === 'library' && !isHome}
+           color="text-cyan-400"
         />
         <FabItem 
            label="Plans" 
