@@ -199,7 +199,13 @@ export function AcademyCourtView({ players, onSelectPlayer, onUpdatePlayerPos }:
     const bottomSingleY = centerY + singlesWidthPx / 2;
 
     return (
-      <g stroke="#ffffff" strokeOpacity={0.15} strokeWidth={2} fill="none">
+      <g stroke="#ffffff" strokeOpacity={0.2} strokeWidth={2} fill="none">
+        {/* Glow effect for main court lines */}
+        <g style={{ filter: 'blur(4px)' }} strokeOpacity={0.15}>
+           <rect x={leftBaseX} y={topSideY} width={lengthPx} height={widthPxDbl} strokeWidth={4} />
+           <line x1={centerX} y1={topSideY} x2={centerX} y2={bottomSideY} strokeWidth={4} />
+        </g>
+        
         <rect x={leftBaseX} y={topSideY} width={lengthPx} height={widthPxDbl} />
         <line x1={centerX} y1={topSideY - 10} x2={centerX} y2={bottomSideY + 10} strokeWidth={3} />
         <line x1={leftBaseX} y1={topSideY} x2={leftBaseX} y2={bottomSideY} strokeWidth={4} />
@@ -215,9 +221,16 @@ export function AcademyCourtView({ players, onSelectPlayer, onUpdatePlayerPos }:
 
   return (
         <div className="relative w-full h-full flex items-center justify-center bg-background overflow-hidden group">
+          {/* Animated Mesh Gradient Background for Premium Feel */}
+          <div className="absolute inset-0 opacity-20 pointer-events-none">
+                         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-primary/20 blur-[120px]" />
+                         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-500/20 blur-[120px]" />          </div>
+
           {/* Court Diagram */}
           <svg
-            viewBox={`0 0 ${BASE_WIDTH} ${BASE_HEIGHT}`}        className="w-full h-full max-h-[85vh] transition-transform duration-1000 ease-out touch-none"
+            viewBox={`0 0 ${BASE_WIDTH} ${BASE_HEIGHT}`}
+            ref={svgRef}
+            className="w-full h-full max-h-[85vh] transition-transform duration-1000 ease-out touch-none relative z-10"
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
@@ -262,8 +275,7 @@ export function AcademyCourtView({ players, onSelectPlayer, onUpdatePlayerPos }:
                  r="35" 
                  fill={pos.avatarColor} 
                  fillOpacity={hoveredPlayerId === pos.id ? 0.15 : 0.05} 
-                 className={cn("transition-all duration-300", hoveredPlayerId === pos.id ? "scale-110" : "animate-pulse")}
-              />
+                                           className={cn("transition-all duration-300", hoveredPlayerId === pos.id ? "scale-110" : "")}              />
               
               {/* Identity Ring */}
               <circle 
@@ -346,28 +358,28 @@ export function AcademyCourtView({ players, onSelectPlayer, onUpdatePlayerPos }:
       {/* Hover Info Card */}
       {hoveredPlayerId && (
          <div 
-            className="fixed z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-200"
+            className="fixed z-50 pointer-events-none"
             style={{ 
                left: `calc(var(--mouse-x, 0px) + 20px)`,
                top: `calc(var(--mouse-y, 0px) - 40px)`
             }}
          >
             {players.filter(p => p.id === hoveredPlayerId).map(p => (
-               <div key={p.id} className="bg-card/90 backdrop-blur-md border border-border p-3 rounded-xl shadow-2xl space-y-2">
+               <div key={p.id} className="glass-card p-4 rounded-2xl shadow-2xl space-y-3 min-w-[180px]">
                   <div className="flex items-center gap-3">
-                     <div className="h-8 w-8 rounded-full border-2" style={{ borderColor: p.avatarColor, backgroundColor: `${p.avatarColor}33` }}>
-                        {p.avatarUrl ? <img src={p.avatarUrl} className="h-full w-full rounded-full object-cover" /> : <div className="h-full w-full flex items-center justify-center text-[10px] font-bold">{p.name.substring(0,2).toUpperCase()}</div>}
+                     <div className="h-10 w-10 rounded-xl border-2 shadow-lg" style={{ borderColor: p.avatarColor, backgroundColor: `${p.avatarColor}33`, boxShadow: `0 0 10px ${p.avatarColor}44` }}>
+                        {p.avatarUrl ? <img src={p.avatarUrl} className="h-full w-full rounded-lg object-cover" /> : <div className="h-full w-full flex items-center justify-center text-[10px] font-black">{p.name.substring(0,2).toUpperCase()}</div>}
                      </div>
                      <div>
-                        <div className="text-xs font-bold text-foreground uppercase tracking-tight">{p.name}</div>
-                        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">{p.level}</div>
+                        <div className="text-sm font-black text-foreground uppercase tracking-tight">{p.name}</div>
+                        <div className="text-[10px] text-primary font-black uppercase tracking-widest">{p.level}</div>
                      </div>
                   </div>
                   <div className="flex gap-2">
-                     <div className="px-2 py-0.5 rounded bg-card/60 border border-border text-[9px] text-muted-foreground">
+                     <div className="flex-1 px-2 py-1.5 rounded-lg bg-white/5 border border-white/5 text-[9px] font-bold text-muted-foreground uppercase tracking-tighter text-center">
                         {p.assignedDrills.length} Drills
                      </div>
-                     <div className="px-2 py-0.5 rounded bg-card/60 border border-border text-[9px] text-muted-foreground">
+                     <div className="flex-1 px-2 py-1.5 rounded-lg bg-white/5 border border-white/5 text-[9px] font-bold text-muted-foreground uppercase tracking-tighter text-center">
                         {p.attendance?.length || 0} Sessions
                      </div>
                   </div>
@@ -377,19 +389,19 @@ export function AcademyCourtView({ players, onSelectPlayer, onUpdatePlayerPos }:
       )}
 
       {/* Floating Info Overlay */}
-      <div className="absolute top-10 left-10 pointer-events-none space-y-1">
-         <div className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground">Academy Roster</div>
-         <div className="text-2xl font-black italic tracking-tighter text-foreground uppercase">The Squad</div>
+      <div className="absolute top-10 left-10 pointer-events-none space-y-1 z-20">
+         <div className="text-[10px] font-black uppercase tracking-[0.4em] text-primary glow-primary w-fit">Academy Roster</div>
+         <div className="text-4xl font-black italic tracking-tighter text-gradient uppercase">The Squad</div>
       </div>
 
-      <div className="absolute bottom-10 right-10 flex flex-col items-end pointer-events-none opacity-40">
-         <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Select a player to view profiles</div>
-         <div className="h-px w-32 bg-border/60 mt-2 mb-4" />
+      <div className="absolute bottom-10 right-10 flex flex-col items-end pointer-events-none opacity-60 z-20">
+         <div className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Drag to organize • Click to view</div>
+         <div className="h-px w-48 bg-gradient-to-r from-transparent via-border/60 to-transparent mt-2 mb-4" />
          <button 
             onClick={handleResetPositions}
-            className="pointer-events-auto px-3 py-1 rounded bg-card border border-border text-[9px] text-muted-foreground hover:text-foreground transition-colors uppercase font-bold tracking-widest"
+            className="pointer-events-auto px-4 py-2 rounded-xl glass border border-white/5 text-[10px] text-muted-foreground hover:text-foreground transition-all uppercase font-black tracking-widest shadow-xl hover:scale-105 active:scale-95"
          >
-            Reset All Positions
+            Reset Positions
          </button>
       </div>
     </div>

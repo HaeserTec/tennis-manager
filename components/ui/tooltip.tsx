@@ -48,7 +48,7 @@ export const TooltipContent = ({ children, className, side = "bottom" }: { child
   return (
     <div
       className={cn(
-        "absolute z-50 overflow-hidden rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground animate-in fade-in-0 zoom-in-95 shadow-md",
+        "absolute z-50 overflow-hidden rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground shadow-md",
         sideClasses[side as keyof typeof sideClasses] || sideClasses.bottom,
         className
       )}

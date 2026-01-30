@@ -116,7 +116,7 @@ export function DrillLibrary({ drills, onUpdateDrill, onDeleteDrill, onSelectDri
   };
 
   return (
-    <div className="flex flex-col h-full bg-background animate-in fade-in duration-300">
+    <div className="flex flex-col h-full bg-background">
       {/* Header */}
       <div className="shrink-0 p-4 border-b border-border bg-card/50 backdrop-blur-sm">
         <div className="flex items-center justify-between mb-4">

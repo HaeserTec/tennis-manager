@@ -52,13 +52,13 @@ import {
     fullscreenSupported
   }: NavigationRailProps) {
     return (
-      <div className="hidden lg:flex flex-col items-center w-16 h-full bg-background border-r border-border py-4 z-40">
+      <div className="hidden lg:flex flex-col items-center w-16 h-full glass border-r border-border py-4 z-40">
         {/* Home / Logo */}
         <button 
           onClick={onGoHome}
           className={cn(
             "mb-8 p-2 rounded-xl transition-all duration-300",
-            isHome ? "bg-primary/20 text-primary shadow-[0_0_15px_-3px_hsl(var(--primary)/0.5)]" : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+            isHome ? "bg-primary/20 text-primary glow-primary border border-primary/20" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
           )}
           title="Home Dashboard"
         >
@@ -73,7 +73,7 @@ import {
             isActive={currentMode === 'standard' && !isHome} 
             onClick={() => onNavigate('standard')}
             colorClass="text-foreground"
-            activeClass="bg-secondary text-foreground shadow-inner"
+            activeClass="bg-secondary/50 text-foreground border border-white/5 shadow-lg"
           />
           <NavButton 
             icon={<ClipboardList className="w-5 h-5" />} 
@@ -81,7 +81,7 @@ import {
             isActive={currentMode === 'plans' && !isHome} 
             onClick={() => onNavigate('plans')}
             colorClass="text-emerald-400"
-            activeClass="bg-emerald-500/20 text-emerald-300 border border-emerald-500/20"
+            activeClass="bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 shadow-[0_0_15px_-3px_rgba(16,185,129,0.3)]"
           />
           <NavButton 
             icon={<Activity className="w-5 h-5" />} 
@@ -89,7 +89,7 @@ import {
             isActive={currentMode === 'performance' && !isHome} 
             onClick={() => onNavigate('performance')}
             colorClass="text-indigo-400"
-            activeClass="bg-indigo-500/20 text-indigo-300 border border-indigo-500/20"
+            activeClass="bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 shadow-[0_0_15px_-3px_rgba(99,102,241,0.3)]"
           />
           <NavButton 
             icon={<Users className="w-5 h-5" />} 
@@ -97,7 +97,7 @@ import {
             isActive={currentMode === 'players' && !isHome} 
             onClick={() => onNavigate('players')}
             colorClass="text-orange-400"
-            activeClass="bg-orange-500/20 text-orange-400 border border-orange-500/20"
+            activeClass="bg-orange-500/20 text-orange-400 border border-orange-500/20 shadow-[0_0_15px_-3px_rgba(251,146,60,0.3)]"
           />
           <NavButton 
             icon={<Trophy className="w-5 h-5" />} 
@@ -105,7 +105,7 @@ import {
             isActive={currentMode === 'scoreboard' && !isHome} 
             onClick={() => onNavigate('scoreboard')}
             colorClass="text-yellow-400"
-            activeClass="bg-yellow-500/20 text-yellow-400 border border-yellow-500/20"
+            activeClass="bg-yellow-500/20 text-yellow-400 border border-yellow-500/20 shadow-[0_0_15px_-3px_rgba(250,204,21,0.3)]"
           />
   
           <NavButton 
@@ -114,9 +114,9 @@ import {
             isActive={currentMode === 'office' && !isHome} 
             onClick={() => onNavigate('office')}
             colorClass="text-pink-400"
-            activeClass="bg-pink-500/20 text-pink-400 border border-pink-500/20"
+            activeClass="bg-pink-500/20 text-pink-400 border border-pink-500/20 shadow-[0_0_15px_-3px_rgba(244,114,182,0.3)]"
           />        
-        <div className="h-px w-8 bg-border mx-auto my-2" />
+        <div className="h-px w-8 bg-border/50 mx-auto my-2" />
         
         <NavButton 
           icon={<Library className="w-5 h-5" />} 
@@ -124,7 +124,7 @@ import {
           isActive={currentMode === 'library' && !isHome} 
           onClick={() => onNavigate('library')}
           colorClass="text-cyan-400"
-          activeClass="bg-cyan-500/20 text-cyan-300 border border-cyan-500/20"
+          activeClass="bg-cyan-500/20 text-cyan-300 border border-cyan-500/20 shadow-[0_0_15px_-3px_rgba(34,211,238,0.3)]"
         />
         
         <NavButton 
@@ -133,7 +133,7 @@ import {
           isActive={currentMode === 'templates' && !isHome} 
           onClick={() => onNavigate('templates')}
           colorClass="text-sky-400"
-          activeClass="bg-sky-500/20 text-sky-300 border border-sky-500/20"
+          activeClass="bg-sky-500/20 text-sky-300 border border-sky-500/20 shadow-[0_0_15px_-3px_rgba(56,189,248,0.3)]"
         />
       </div>
 
@@ -156,7 +156,7 @@ import {
         {installPrompt && (
           <button 
             onClick={onInstall} 
-            className="p-2 text-primary hover:text-primary/80 transition-colors animate-pulse"
+            className="p-2 text-primary hover:text-primary/80 transition-colors"
             title="Install App"
           >
             <Download className="w-5 h-5" />

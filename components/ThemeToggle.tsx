@@ -21,11 +21,11 @@ export function ThemeToggle({ theme, onToggle, className }: ThemeToggleProps) {
       )}
       title={theme === 'light' ? "Switch to Dark Mode" : "Switch to Light Mode"}
     >
-      {theme === 'light' ? (
-        <Moon className="w-5 h-5 animate-in zoom-in-50 duration-300" />
-      ) : (
-        <Sun className="w-5 h-5 animate-in zoom-in-50 duration-300" />
-      )}
+        {theme === 'dark' || theme === 'midnight' ? (
+          <Moon className="w-5 h-5" />
+        ) : (
+          <Sun className="w-5 h-5" />
+        )}
     </button>
   );
 }

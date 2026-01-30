@@ -837,7 +837,7 @@ export default function App() {
             />
             {/* If Editing a Drill, show Form. Else show List */}
             {isEditing && editForm && appMode === 'standard' ? (
-               <div className="flex flex-col h-full overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
+               <div className="flex flex-col h-full overflow-hidden">
                   <div className="p-4 border-b border-border bg-background/50">
                      <h2 className="text-xs font-bold text-primary uppercase tracking-wider">Editing Properties</h2>
                   </div>
@@ -928,7 +928,7 @@ export default function App() {
                   </div>
                </div>
             ) : isEditing && editTemplateForm && appMode === 'templates' ? (
-               <div className="flex flex-col h-full overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
+               <div className="flex flex-col h-full overflow-hidden">
                   <div className="p-4 border-b border-border bg-background/50">
                      <h2 className="text-xs font-bold text-primary uppercase tracking-wider">Edit Template</h2>
                   </div>
@@ -948,7 +948,7 @@ export default function App() {
                   </div>
                </div>
             ) : isEditing && editSequenceForm && appMode === 'performance' ? (
-               <div className="flex flex-col h-full overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300">
+               <div className="flex flex-col h-full overflow-hidden">
                   <div className="p-4 border-b border-border bg-background/50">
                      <h2 className="text-xs font-bold text-primary uppercase tracking-wider">Edit Sequence</h2>
                   </div>
@@ -1394,7 +1394,7 @@ export default function App() {
       {/* Hover Preview Portal */}
       {hoveredDrill && !activeDrillId && (
          <div 
-            className="fixed left-96 top-20 z-50 hidden w-72 bg-popover border border-border rounded-xl shadow-2xl p-3 pointer-events-none animate-in fade-in slide-in-from-left-2 duration-200 lg:block no-print"
+            className="fixed left-96 top-20 z-50 hidden w-72 bg-popover border border-border rounded-xl shadow-2xl p-3 pointer-events-none lg:block no-print"
             style={{ top: 'max(80px, calc(50vh - 100px))' }}
          >
             <div className="mb-2 flex items-center justify-between">

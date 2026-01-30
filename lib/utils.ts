@@ -63,3 +63,35 @@ export function arrayMove<T>(arr: T[], from: number, to: number) {
 }
 
 export const nowMs = () => Date.now();
+
+export function getPointDistance(p1: { x: number; y: number }, p2: { x: number; y: number }) {
+  const dx = p1.x - p2.x;
+  const dy = p1.y - p2.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+export function getPathLength(points: { x: number; y: number }[], pathType: 'linear' | 'curve' = 'linear') {
+  if (points.length < 2) return 0;
+  
+  if (pathType === 'curve' && points.length === 3) {
+    // Approximate quadratic Bezier length using segments
+    let len = 0;
+    const segments = 20;
+    let prev = points[0];
+    for (let i = 1; i <= segments; i++) {
+      const t = i / segments;
+      const x = (1 - t) * (1 - t) * points[0].x + 2 * (1 - t) * t * points[1].x + t * t * points[2].x;
+      const y = (1 - t) * (1 - t) * points[0].y + 2 * (1 - t) * t * points[1].y + t * t * points[2].y;
+      const current = { x, y };
+      len += getPointDistance(prev, current);
+      prev = current;
+    }
+    return len;
+  }
+  
+  let len = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    len += getPointDistance(points[i], points[i + 1]);
+  }
+  return len;
+}

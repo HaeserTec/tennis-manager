@@ -223,6 +223,17 @@ export interface Term {
   endDate: string;   // YYYY-MM-DD
 }
 
+export type DayEventType = 'Rain' | 'Coach Cancelled' | 'Tournament' | 'Holiday';
+
+export interface DayEvent {
+  id: string;
+  date: string; // YYYY-MM-DD
+  type: DayEventType;
+  note?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface LocationConfig {
   id: string;
   name: string;
@@ -338,4 +349,5 @@ export const STORAGE_KEYS = {
   DRILL_CATEGORIES: 'tactics-lab-drill-categories',
   DRILL_COLLECTIONS: 'tactics-lab-drill-collections',
   PLAYER_GOALS: 'tactics-lab-player-goals',
+  DAY_EVENTS: 'tactics-lab-day-events',
 };

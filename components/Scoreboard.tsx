@@ -126,7 +126,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
   const activeLog = todaysLogs.find(l => l.playerId === selectedPlayerId);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-background relative overflow-hidden animate-in fade-in duration-300">
+    <div className="flex-1 flex flex-col h-full bg-background relative overflow-hidden">
       
       {/* Header */}
       <div className="shrink-0 p-4 border-b border-border bg-card/50 backdrop-blur-sm z-10 flex flex-col gap-4">
@@ -148,7 +148,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
         </div>
 
         {viewMode === 'daily' && (
-           <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-2">
+           <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                  <div className="flex items-center gap-2 bg-secondary/50 rounded-lg p-1">
                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDateChange(-1)}><ChevronLeft className="w-3 h-3" /></Button>
@@ -178,65 +178,67 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
          
          {/* VIEW: LEADERBOARD */}
          {viewMode === 'leaderboard' && (
-            <div className="absolute inset-0 overflow-auto p-4 md:p-8 animate-in fade-in zoom-in-95 duration-200">
+            <div className="absolute inset-0 overflow-auto p-4 md:p-8">
                <div className="max-w-5xl mx-auto">
-                  <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+                  <div className="glass-card rounded-[2rem] overflow-hidden shadow-2xl">
                      {/* Table Header */}
-                     <div className="grid grid-cols-[3rem_2fr_5rem_1fr] md:grid-cols-[4rem_2fr_repeat(5,1fr)] bg-secondary/30 border-b border-border text-[10px] font-black uppercase tracking-widest text-muted-foreground sticky top-0 backdrop-blur-md z-10">
-                        <div className="p-4 text-center">#</div>
-                        <div className="p-4 cursor-pointer hover:text-foreground flex items-center gap-1" onClick={() => handleSort('name')}>
+                     <div className="grid grid-cols-[3rem_2fr_5rem_1fr] md:grid-cols-[4rem_2fr_repeat(5,1fr)] bg-white/5 border-b border-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground sticky top-0 backdrop-blur-xl z-10">
+                        <div className="p-5 text-center">#</div>
+                        <div className="p-5 cursor-pointer hover:text-foreground flex items-center gap-2 transition-colors" onClick={() => handleSort('name')}>
                            Player <ArrowUpDown className="w-3 h-3" />
                         </div>
-                        <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('backToBase')}>Base Speed</div>
-                        <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('longestRally')}>Rally</div>
-                        <div className="p-4 text-center cursor-pointer hover:text-foreground hidden md:block" onClick={() => handleSort('firstServe')}>Serve %</div>
-                        <div className="p-4 text-center flex items-center justify-center gap-1" title="Last 5 sessions trend">
-                           <TrendingUp className="w-3 h-3 text-fuchsia-500" /> Trend
+                        <div className="p-5 text-center cursor-pointer hover:text-foreground hidden md:block transition-colors" onClick={() => handleSort('backToBase')}>Base Speed</div>
+                        <div className="p-5 text-center cursor-pointer hover:text-foreground hidden md:block transition-colors" onClick={() => handleSort('longestRally')}>Rally</div>
+                        <div className="p-5 text-center cursor-pointer hover:text-foreground hidden md:block transition-colors" onClick={() => handleSort('firstServe')}>Serve %</div>
+                        <div className="p-5 text-center flex items-center justify-center gap-2" title="Last 5 sessions trend">
+                           <TrendingUp className="w-3 h-3 text-fuchsia-400" /> Trend
                         </div>
-                        <div className="p-4 text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-1" onClick={() => handleSort('streak')} title="Consecutive weeks with a past scheduled session">
-                           <Flame className="w-3 h-3 text-orange-500" /> Streak
+                        <div className="p-5 text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-2 transition-colors" onClick={() => handleSort('streak')} title="Consecutive weeks with a past scheduled session">
+                           <Flame className="w-3 h-3 text-orange-500 glow-primary" /> Streak
                         </div>
                      </div>
 
                      {/* Table Body */}
-                     <div className="divide-y divide-border/50">
+                     <div className="divide-y divide-white/5">
                         {leaderboardData.map((player, idx) => (
                            <div key={player.id} className="grid grid-cols-[3rem_2fr_5rem_1fr] md:grid-cols-[4rem_2fr_repeat(5,1fr)] hover:bg-white/5 transition-colors group items-center">
-                              <div className="p-4 text-center font-black text-muted-foreground flex justify-center">
-                                 {idx === 0 ? <Medal className="w-5 h-5 text-yellow-400" /> :
-                                  idx === 1 ? <Medal className="w-5 h-5 text-slate-400" /> :
-                                  idx === 2 ? <Medal className="w-5 h-5 text-amber-700" /> :
-                                  idx + 1}
+                              <div className="p-5 text-center font-black text-muted-foreground flex justify-center">
+                                 {idx === 0 ? <Medal className="w-6 h-6 text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]" /> :
+                                  idx === 1 ? <Medal className="w-6 h-6 text-slate-300 drop-shadow-[0_0_8px_rgba(203,213,225,0.5)]" /> :
+                                  idx === 2 ? <Medal className="w-6 h-6 text-amber-600 drop-shadow-[0_0_8px_rgba(180,83,9,0.5)]" /> :
+                                  <span className="text-sm opacity-40">{idx + 1}</span>}
                               </div>
-                              <div className="p-4 flex items-center gap-3">
-                                 <div className="h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs bg-secondary shrink-0">
-                                    {player.name.substring(0,2)}
+                              <div className="p-5 flex items-center gap-4">
+                                 <div className="h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs glass border border-white/5 shrink-0 group-hover:scale-110 transition-transform" style={{ color: player.avatarColor, backgroundColor: `${player.avatarColor}15` }}>
+                                    {player.name.substring(0,2).toUpperCase()}
                                  </div>
-                                 <div className="font-bold text-sm">{player.name}</div>
+                                 <div className="font-black text-sm uppercase tracking-tight text-foreground">{player.name}</div>
                               </div>
 
                               {/* Stats Columns */}
-                              <div className="p-4 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground">
-                                 {player.backToBase > 0 ? `${player.backToBase}s` : '-'}
+                              <div className="p-5 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground/80">
+                                 {player.backToBase > 0 ? `${player.backToBase}s` : '—'}
                               </div>
-                              <div className="p-4 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground">
-                                 {player.longestRally > 0 ? player.longestRally : '-'}
+                              <div className="p-5 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground/80">
+                                 {player.longestRally > 0 ? player.longestRally : '—'}
                               </div>
-                              <div className="p-4 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground">
-                                 {player.firstServe > 0 ? `${player.firstServe}%` : '-'}
+                              <div className="p-5 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground/80">
+                                 {player.firstServe > 0 ? `${player.firstServe}%` : '—'}
                               </div>
 
                               {/* Trend Sparkline */}
-                              <div className="p-4 flex justify-center items-center">
+                              <div className="p-5 flex justify-center items-center">
                                  {player.trendData.length >= 2 ? (
-                                    <Sparkline data={player.trendData} width={60} height={20} color="#d946ef" />
+                                    <div className="p-1 rounded bg-fuchsia-500/5 border border-fuchsia-500/10">
+                                       <Sparkline data={player.trendData} width={60} height={20} color="#d946ef" />
+                                    </div>
                                  ) : (
-                                    <span className="text-muted-foreground text-xs">-</span>
+                                    <span className="text-muted-foreground text-[10px] font-black uppercase tracking-widest opacity-30">No Data</span>
                                  )}
                               </div>
 
-                              <div className="p-4 text-center font-black text-orange-500 flex justify-center items-center gap-1">
-                                 {player.streak} <span className="text-[10px] text-muted-foreground font-medium uppercase">Wks</span>
+                              <div className="p-5 text-center font-black text-orange-500 flex justify-center items-center gap-1.5 drop-shadow-[0_0_8px_rgba(249,115,22,0.3)]">
+                                 {player.streak} <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest opacity-60">Wks</span>
                               </div>
                            </div>
                         ))}
@@ -334,8 +336,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
 
       {/* Mobile Drawer (Only for Daily View) */}
       {isMobileDrawerOpen && activePlayer && viewMode === 'daily' && (
-         <div className="lg:hidden absolute inset-0 z-50 bg-background/95 backdrop-blur-md flex flex-col animate-in slide-in-from-bottom-full duration-300">
-             <LogForm
+                     <div className="lg:hidden absolute inset-0 z-50 bg-background/95 backdrop-blur-md flex flex-col">             <LogForm
                player={activePlayer}
                existingLog={activeLog}
                date={selectedDate}
@@ -448,7 +449,7 @@ function LogForm({ player, existingLog, date, allLogs, onSave, onCancel, embedde
                </button>
 
                {progressExpanded && (
-                  <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="">
                      {progressData.length >= 2 ? (
                         <div className="bg-card/50 border border-border/50 rounded-xl p-4">
                            <ProgressChart data={progressData} height={180} showLegend={true} />

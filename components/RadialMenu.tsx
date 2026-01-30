@@ -22,15 +22,9 @@ export function RadialMenu({ x, y, onClose, onSelect }: RadialMenuProps) {
   }, [onClose]);
 
   return (
-    <div
-      className="absolute z-50 animate-in fade-in zoom-in-95 duration-200"
-      style={{
-        left: x,
-        top: y,
-        transform: "translate(-50%, -50%)",
-      }}
-      onClick={(e) => e.stopPropagation()} // Prevent closing when clicking the menu
-      onDoubleClick={(e) => e.stopPropagation()} // Prevent double click bubbling
+    <div 
+      className="absolute z-50"
+      style={{ left: position.x - 100, top: position.y - 100 }}
     >
       {/* Central Close Button */}
       <div className="relative w-32 h-32 flex items-center justify-center">

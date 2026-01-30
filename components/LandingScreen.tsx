@@ -67,18 +67,18 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
   };
 
   return (
-    <div className="midnight min-h-screen bg-background text-white flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
+    <div className="midnight min-h-screen bg-radial-gradient text-white flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
       {/* Background Ambience (Tennis Court) */}
       <div className="absolute inset-0 z-0 opacity-20 blur-[1px] pointer-events-none select-none">
          <PlaybookDiagramV2 showHeader={false} fill={true} disablePersistence={true} isBackground={true} />
       </div>
 
-      <div className="w-full max-w-md z-10 space-y-8 animate-in fade-in zoom-in-95 duration-500">
+      <div className="w-full max-w-md z-10 space-y-8">
         
         {/* Logo / Header */}
         <div className="text-center space-y-2">
            <div className="relative w-20 h-20 mx-auto mb-6">
-              <div className="absolute inset-0 bg-indigo-500/20 blur-2xl rounded-full animate-pulse" />
+              <div className="absolute inset-0 bg-primary/20 blur-2xl rounded-full" />
               <img
                 src="/vgta-icon.svg"
                 alt="VGTA"
@@ -86,40 +86,40 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
               />
            </div>
            <h1 className="text-3xl font-bold tracking-tight">VGTA</h1>
-           <p className="text-slate-400">High Performance Academy</p>
+           <p className="text-zinc-400">High Performance Academy</p>
         </div>
 
         {/* Main Card */}
-        <div className="bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
+        <div className="glass-card rounded-[2.5rem] p-10">
            
            {view === 'selection' && (
-              <div className="space-y-4">
+              <div className="space-y-5">
                  <button 
                     onClick={() => setView('client-auth')}
-                    className="w-full group relative flex items-center gap-4 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-primary/50 transition-all text-left"
+                    className="w-full group relative flex items-center gap-5 p-5 rounded-3xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-primary/50 transition-all text-left shadow-lg hover:shadow-primary/10 hover:-translate-y-1 duration-300"
                  >
-                    <div className="w-12 h-12 rounded-full bg-primary/20 text-primary flex items-center justify-center group-hover:scale-110 transition-transform">
-                       <User className="w-6 h-6" />
+                    <div className="w-14 h-14 rounded-2xl bg-primary/20 text-primary flex items-center justify-center group-hover:scale-110 group-hover:rotate-3 transition-all duration-500 shadow-xl">
+                       <User className="w-7 h-7" />
                     </div>
                     <div className="flex-1">
-                       <h3 className="font-bold text-lg text-white group-hover:text-primary transition-colors">Athlete / Parent</h3>
-                       <p className="text-xs text-slate-400">View schedules & progress</p>
+                       <h3 className="font-black text-xl text-white group-hover:text-primary transition-colors uppercase italic tracking-tight">Athlete / Parent</h3>
+                       <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest opacity-60">View schedules & progress</p>
                     </div>
-                    <ArrowRight className="w-5 h-5 text-slate-500 group-hover:text-primary group-hover:translate-x-1 transition-all" />
+                    <ArrowRight className="w-6 h-6 text-zinc-500 group-hover:text-primary group-hover:translate-x-2 transition-all duration-500" />
                  </button>
 
                  <button 
                     onClick={() => setView('coach-auth')}
-                    className="w-full group relative flex items-center gap-4 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 transition-all text-left"
+                    className="w-full group relative flex items-center gap-5 p-5 rounded-3xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 transition-all text-left shadow-lg hover:-translate-y-1 duration-300"
                  >
-                    <div className="w-12 h-12 rounded-full bg-white/10 text-white flex items-center justify-center group-hover:scale-110 transition-transform">
-                       <ShieldCheck className="w-6 h-6" />
+                    <div className="w-14 h-14 rounded-2xl bg-white/10 text-white flex items-center justify-center group-hover:scale-110 group-hover:-rotate-3 transition-all duration-500 shadow-xl">
+                       <ShieldCheck className="w-7 h-7" />
                     </div>
                     <div className="flex-1">
-                       <h3 className="font-bold text-lg text-white group-hover:text-slate-200 transition-colors">Coach Access</h3>
-                       <p className="text-xs text-slate-400">Manage academy & drills</p>
+                       <h3 className="font-black text-xl text-white group-hover:text-zinc-200 transition-colors uppercase italic tracking-tight">Coach Access</h3>
+                       <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest opacity-60">Manage academy & drills</p>
                     </div>
-                    <ArrowRight className="w-5 h-5 text-slate-500 group-hover:text-white group-hover:translate-x-1 transition-all" />
+                    <ArrowRight className="w-6 h-6 text-zinc-500 group-hover:text-white group-hover:translate-x-2 transition-all duration-500" />
                  </button>
               </div>
            )}
@@ -128,7 +128,7 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
               <form onSubmit={handleCoachSubmit} className="space-y-4">
                  <div className="text-center">
                     <h3 className="text-lg font-bold">{authMode === 'login' ? 'Coach Login' : 'Create Account'}</h3>
-                    <p className="text-xs text-slate-400 mt-1">{authMode === 'login' ? 'Enter your credentials' : 'Join the coaching staff'}</p>
+                    <p className="text-xs text-zinc-400 mt-1">{authMode === 'login' ? 'Enter your credentials' : 'Join the coaching staff'}</p>
                  </div>
                  
                  <div className="space-y-3">
@@ -141,7 +141,7 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
                           autoComplete="email"
                           type="email" 
                           placeholder="Email" 
-                          className="bg-slate-950/50 border-white/10 h-10 font-medium focus-visible:ring-primary"
+                          className="bg-zinc-950/50 border-white/10 h-10 font-medium focus-visible:ring-primary"
                           value={email}
                           onChange={(e) => { setEmail(e.target.value); setError(''); }}
                           autoFocus
@@ -154,12 +154,12 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
                           autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
                           type="password" 
                           placeholder="Password" 
-                          className="bg-slate-950/50 border-white/10 h-10 font-medium focus-visible:ring-primary"
+                          className="bg-zinc-950/50 border-white/10 h-10 font-medium focus-visible:ring-primary"
                           value={password}
                           onChange={(e) => { setPassword(e.target.value); setError(''); }}
                        />
                     </div>
-                    {error && <p className="text-center text-red-400 text-xs font-medium animate-in slide-in-from-top-1">{error}</p>}
+                    {error && <p className="text-center text-red-400 text-xs font-medium">{error}</p>}
                  </div>
 
                  <div className="flex gap-3 pt-2">
@@ -173,7 +173,7 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
                     <button 
                        type="button"
                        onClick={() => { setAuthMode(m => m === 'login' ? 'signup' : 'login'); setError(''); setSuccessMsg(''); }}
-                       className="text-[10px] text-slate-400 hover:text-white underline underline-offset-2"
+                       className="text-[10px] text-zinc-400 hover:text-white underline underline-offset-2"
                     >
                        {authMode === 'login' ? "Don't have an account? Sign Up" : "Already have an account? Log In"}
                     </button>
@@ -185,7 +185,7 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
               <div className="space-y-6">
                  <div className="text-center">
                     <h3 className="text-lg font-bold">Select Account</h3>
-                    <p className="text-xs text-slate-400 mt-1">Choose your family profile</p>
+                    <p className="text-xs text-zinc-400 mt-1">Choose your family profile</p>
                  </div>
 
                  <div className="space-y-2 max-h-[240px] overflow-y-auto custom-scrollbar -mr-2 pr-2">
@@ -201,13 +201,13 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
                              </div>
                              <div className="flex-1 min-w-0">
                                 <div className="font-semibold text-sm truncate group-hover:text-primary transition-colors">{client.name}</div>
-                                <div className="text-[10px] text-slate-500 truncate">{client.email}</div>
+                                <div className="text-[10px] text-zinc-500 truncate">{client.email}</div>
                              </div>
-                             <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-primary opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
+                             <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-primary opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
                           </button>
                        ))
                     ) : (
-                       <div className="text-center py-8 text-xs text-slate-500">
+                       <div className="text-center py-8 text-xs text-zinc-500">
                           No active accounts found.<br/>Please contact the academy.
                        </div>
                     )}
@@ -220,7 +220,7 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
         </div>
         
         {/* Footer */}
-        <p className="text-center text-[10px] text-slate-600 font-medium">
+        <p className="text-center text-[10px] text-zinc-600 font-medium">
            &copy; {new Date().getFullYear()} Von Gericke Tennis Academy &bull; v1.0.4
         </p>
       </div>

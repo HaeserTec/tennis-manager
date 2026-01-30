@@ -202,11 +202,11 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-full overflow-hidden bg-background text-foreground animate-in fade-in duration-300 relative">
+    <div className="flex flex-col md:flex-row h-full overflow-hidden bg-radial-gradient text-foreground relative">
       
       {/* ADD PLAYER MODAL */}
       {isAddModalOpen && (
-         <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+         <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-6" onClick={e => e.stopPropagation()}>
                <div className="space-y-1">
                   <h3 className="text-xl font-black tracking-tight">New Recruit</h3>
@@ -304,12 +304,12 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
               key={player.id}
               onClick={() => isSelectionMode ? togglePlayerSelection(player.id) : setSelectedPlayerId(player.id)}
               className={cn(
-                "w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left group relative",
+                "w-full flex items-center gap-3 p-3 rounded-2xl border transition-all text-left group relative",
                 isSelectionMode && selectedPlayerIds.has(player.id)
                   ? "bg-primary/10 border-primary/50"
                   : selectedPlayerId === player.id 
-                     ? "bg-secondary border-primary/50 ring-1 ring-primary/20 shadow-[0_0_15px_-3px_rgba(217,70,239,0.2)]" 
-                     : "bg-card/40 border-transparent hover:bg-secondary"
+                     ? "bg-secondary border-primary/50 ring-1 ring-primary/20 shadow-lg glow-primary" 
+                     : "bg-card/40 border-transparent hover:bg-secondary/50"
               )}
             >
               {isSelectionMode && (
@@ -321,10 +321,11 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
                  </div>
               )}
               <div 
-                className="h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 overflow-hidden border-2"
+                className="h-10 w-10 rounded-full flex items-center justify-center text-sm font-black text-white shrink-0 overflow-hidden border-2 shadow-lg"
                 style={{ 
                    borderColor: player.avatarColor,
-                   backgroundColor: player.avatarUrl ? 'transparent' : `${player.avatarColor}33` 
+                   backgroundColor: player.avatarUrl ? 'transparent' : `${player.avatarColor}33`,
+                   boxShadow: `0 0 10px -2px ${player.avatarColor}aa`
                 }}
               >
                 {player.avatarUrl ? (
@@ -334,8 +335,8 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm truncate text-foreground">{player.name}</div>
-                <div className="text-[11px] text-muted-foreground">{player.level}</div>
+                <div className="font-black text-sm truncate text-foreground uppercase tracking-tight">{player.name}</div>
+                <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest opacity-60">{player.level}</div>
               </div>
             </button>
           ))}
@@ -343,7 +344,7 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
 
         {/* Bulk Action Footer */}
         {isSelectionMode && selectedPlayerIds.size > 0 && (
-           <div className="p-4 border-t border-border bg-card/80 backdrop-blur animate-in slide-in-from-bottom-2">
+           <div className="p-4 border-t border-border bg-card/80 backdrop-blur">
               <div className="text-xs font-bold text-muted-foreground mb-2 uppercase tracking-wider">{selectedPlayerIds.size} Selected</div>
               <Select onValueChange={handleBulkAssign}>
                  <SelectTrigger className="w-full h-9 text-xs"><SelectValue placeholder="Assign Drill..." /></SelectTrigger>
@@ -447,23 +448,24 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
    return (
       <div className="flex-1 flex flex-col min-h-0 bg-background">
          {/* Mobile Header */}
-         <div className="md:hidden flex items-center p-4 border-b border-border bg-card/50">
+         <div className="md:hidden flex items-center p-4 border-b border-border glass">
             <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2 mr-2">
                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             </Button>
-            <span className="font-semibold text-sm uppercase tracking-widest">Profile</span>
+            <span className="font-black text-xs uppercase tracking-[0.2em]">Profile</span>
          </div>
 
          {/* Hero Header */}
-         <div className="p-6 md:p-10 pb-4 border-b border-border bg-card/10 shrink-0">
-            <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-center md:items-start max-w-5xl mx-auto w-full">
+         <div className="p-6 md:p-10 pb-6 border-b border-border bg-card/10 shrink-0 relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-50" />
+            <div className="flex flex-col md:flex-row gap-8 md:gap-12 items-center md:items-start max-w-5xl mx-auto w-full relative z-10">
                <div className="relative group shrink-0">
                   <div 
-                    className="h-28 w-28 md:h-36 md:w-32 rounded-3xl flex items-center justify-center text-3xl md:text-4xl font-bold text-white shadow-2xl border-[4px] overflow-hidden transition-all"
+                    className="h-32 w-32 md:h-40 md:w-40 rounded-[2rem] flex items-center justify-center text-4xl md:text-5xl font-black text-white shadow-2xl border-[4px] overflow-hidden transition-all"
                     style={{ 
                        borderColor: player.avatarColor,
                        backgroundColor: player.avatarUrl ? 'transparent' : `${player.avatarColor}33`,
-                       boxShadow: `0 0 20px -5px ${player.avatarColor}66`
+                       boxShadow: `0 0 30px -5px ${player.avatarColor}88`
                     }}
                   >
                     {player.avatarUrl ? (
@@ -472,46 +474,46 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
                       player.name.substring(0, 2).toUpperCase()
                     )}
                   </div>
-                  <button onClick={() => fileInputRef.current?.click()} className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl">
+                  <button onClick={() => fileInputRef.current?.click()} className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-[2rem]">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
                   </button>
                   <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
                   
-                  <button onClick={() => setShowColors(!showColors)} className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full border-2 border-border bg-secondary flex items-center justify-center shadow-lg hover:scale-110 transition-transform z-10">
-                     <div className="h-4 w-4 rounded-full" style={{ backgroundColor: player.avatarColor }} />
+                  <button onClick={() => setShowColors(!showColors)} className="absolute -bottom-1 -right-1 h-10 w-10 rounded-full border-2 border-white/20 bg-card backdrop-blur flex items-center justify-center shadow-2xl hover:scale-110 transition-transform z-10">
+                     <div className="h-5 w-5 rounded-full shadow-inner" style={{ backgroundColor: player.avatarColor }} />
                   </button>
 
                   {showColors && (
-                     <div className="absolute top-full left-0 mt-2 z-50 bg-card border border-border p-2 rounded-2xl shadow-2xl flex gap-2 animate-in fade-in zoom-in-95 duration-200">
+                     <div className="absolute top-full left-0 mt-4 z-50 glass p-3 rounded-2xl shadow-2xl flex gap-2">
                         {AVATAR_COLORS.map(color => (
-                           <button key={color} onClick={() => { onUpdate({...player, avatarColor: color, updatedAt: Date.now()}); setShowColors(false); }} className={cn("h-6 w-6 rounded-full border-2 transition-all hover:scale-110", player.avatarColor === color ? "border-white" : "border-transparent")} style={{ backgroundColor: color }} />
+                           <button key={color} onClick={() => { onUpdate({...player, avatarColor: color, updatedAt: Date.now()}); setShowColors(false); }} className={cn("h-7 w-7 rounded-full border-2 transition-all hover:scale-110", player.avatarColor === color ? "border-white" : "border-transparent shadow-lg")} style={{ backgroundColor: color }} />
                         ))}
                      </div>
                   )}
                </div>
                
-               <div className="flex-1 space-y-4 w-full">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                     <div className="space-y-1">
-                        <Input value={player.name} onChange={e => onUpdate({...player, name: e.target.value})} className="text-2xl md:text-4xl font-black bg-transparent border-transparent hover:border-border focus:bg-card/50 px-2 -ml-2 h-auto py-1 text-center md:text-left tracking-tighter uppercase" />
-                        <div className="flex items-center justify-center md:justify-start gap-3">
-                           <span className="text-[10px] font-black tracking-[0.2em] text-primary uppercase">{player.level}</span>
-                           <div className="h-1 w-1 rounded-full bg-muted" />
-                           <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">{player.handedness || 'Handedness'}</span>
+               <div className="flex-1 space-y-6 w-full text-center md:text-left">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                     <div className="space-y-2">
+                        <Input value={player.name} onChange={e => onUpdate({...player, name: e.target.value})} className="text-3xl md:text-6xl font-black bg-transparent border-transparent hover:border-white/10 focus:bg-card/50 px-2 -ml-2 h-auto py-1 text-center md:text-left tracking-tighter uppercase text-gradient" />
+                        <div className="flex items-center justify-center md:justify-start gap-4">
+                           <span className="text-[11px] font-black tracking-[0.3em] text-primary uppercase">{player.level}</span>
+                           <div className="h-1.5 w-1.5 rounded-full bg-muted/50" />
+                           <span className="text-[11px] text-muted-foreground font-black uppercase tracking-[0.2em]">{player.handedness || 'Handedness'}</span>
                         </div>
                      </div>
-                     <div className="flex gap-2 justify-center">
-                        <Button variant="ghost" size="sm" onClick={onBack} className="h-8 px-3 gap-2 text-muted-foreground hover:text-foreground bg-card/50 border border-border font-bold text-[10px] tracking-widest">
+                     <div className="flex gap-3 justify-center">
+                        <Button variant="ghost" size="sm" onClick={onBack} className="h-10 px-5 gap-3 text-muted-foreground hover:text-foreground glass border border-white/5 font-black text-[10px] tracking-[0.2em] rounded-xl">
                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
                            SQUAD
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => onDelete(player.id)} className="text-muted-foreground hover:text-red-500 hover:bg-red-500/10 h-8 px-3 border border-transparent font-bold text-[10px] tracking-widest">
+                        <Button variant="ghost" size="sm" onClick={() => onDelete(player.id)} className="text-muted-foreground hover:text-red-400 hover:bg-red-400/10 h-10 px-5 border border-transparent font-black text-[10px] tracking-[0.2em] rounded-xl">
                            DELETE
                         </Button>
                      </div>
                   </div>
 
-                   <div className="flex items-center justify-center md:justify-start gap-1 p-1 bg-card/50 border border-border rounded-xl w-fit">
+                   <div className="flex items-center justify-center md:justify-start gap-1.5 p-1.5 glass border border-white/5 rounded-[1.25rem] w-fit">
                       {[
                          { id: 'build', label: 'The Build' },
                          { id: 'history', label: 'Progression' },
@@ -519,7 +521,7 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
                          { id: 'intel', label: 'Intel' },
                          { id: 'progress', label: 'Progress' }
                       ].map(tab => (
-                         <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={cn("px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all", activeTab === tab.id ? "bg-secondary text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>{tab.label}</button>
+                         <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={cn("px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all", activeTab === tab.id ? "bg-primary/20 text-primary shadow-sm glow-primary" : "text-muted-foreground hover:text-foreground hover:bg-white/5")}>{tab.label}</button>
                       ))}
                    </div>
                </div>
@@ -531,7 +533,7 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
             <div className="max-w-5xl mx-auto p-6 md:p-10">
                
                {activeTab === 'build' && (
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                      <div className="lg:col-span-7 space-y-8">
                         <Section title="Foundation Specs">
                            <div className="grid grid-cols-2 gap-4">
@@ -616,7 +618,7 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
                )}
 
                {activeTab === 'history' && (
-                  <div className="max-w-3xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="max-w-3xl mx-auto space-y-10">
                      <Section title="Personal Bests & Metrics">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                            <PBMetric label="Back to Base" unit="sec" value={player.pbs?.backToBase} onChange={v => handleNestedUpdate('pbs', 'backToBase', v)} icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>} />
@@ -644,7 +646,7 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
                )}
 
                {activeTab === 'dna' && (
-                  <div className="max-w-3xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="max-w-3xl mx-auto space-y-10">
                      <Section title="Player DNA & Preferences">
                         <div className="grid grid-cols-1 gap-6">
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -686,7 +688,7 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
                )}
 
                {activeTab === 'intel' && (
-                  <div className="max-w-3xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="max-w-3xl mx-auto space-y-10">
                      <Section title="Parent Account & Linking">
                         {linkedClient ? (
                            <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between">
@@ -754,7 +756,7 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
                 )}
 
                 {activeTab === 'progress' && (
-                   <div className="max-w-3xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                   <div className="max-w-3xl mx-auto space-y-10">
                       <Section title="Quick Stats">
                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                             {[

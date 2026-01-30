@@ -401,7 +401,7 @@ export function SessionBuilder({ drills, plan, onUpdatePlan }: SessionBuilderPro
           {/* Sidebar Hover Preview */}
           {hoveredDrill && !isPreviewMode && (
              <div 
-                className="absolute top-4 z-50 hidden w-72 bg-background border border-border rounded-xl shadow-2xl p-3 pointer-events-none animate-in fade-in slide-in-from-right-2 duration-200 lg:block"
+                className="absolute top-4 z-50 hidden w-72 bg-background border border-border rounded-xl shadow-2xl p-3 pointer-events-none lg:block"
                 style={{ right: `calc(${sidebarWidth}px + 10px)` }}
              >
                 <div className="mb-2 flex items-center justify-between">

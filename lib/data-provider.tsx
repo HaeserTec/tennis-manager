@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { 
   Drill, DrillTemplate, Sequence, SessionPlan, Player, Client, TrainingSession, 
-  LocationConfig, SessionLog, Term 
+  LocationConfig, SessionLog, Term, DayEvent 
 } from './playbook';
-import { nanoid, safeJsonParse, nowMs } from './utils';
+import { nanoid, safeJsonParse, nowMs, getPathLength } from './utils';
 import { supabase } from './supabase';
 
 // Check if Supabase is configured
@@ -83,6 +83,7 @@ interface DataContextType {
   locations: LocationConfig[];
   logs: SessionLog[];
   terms: Term[];
+  dayEvents: DayEvent[];
 
   // Actions
   setDrills: React.Dispatch<React.SetStateAction<Drill[]>>;
@@ -95,6 +96,7 @@ interface DataContextType {
   setLocations: React.Dispatch<React.SetStateAction<LocationConfig[]>>;
   setLogs: React.Dispatch<React.SetStateAction<SessionLog[]>>;
   setTerms: React.Dispatch<React.SetStateAction<Term[]>>;
+  setDayEvents: React.Dispatch<React.SetStateAction<DayEvent[]>>;
 
   // High-Level Actions
   addDrill: (drill: Drill) => void;
@@ -121,8 +123,12 @@ interface DataContextType {
   upsertSession: (session: TrainingSession) => void;
   deleteSession: (id: string) => void;
   upsertLog: (log: SessionLog) => void;
+  
+  upsertDayEvent: (event: DayEvent) => void;
+  deleteDayEvent: (id: string) => void;
+
   uploadFile: (bucket: string, file: File) => Promise<string | null>;
-  forceSync: () => Promise<void>;
+  forceSync: (direction?: 'auto' | 'upload' | 'download') => Promise<void>;
   importData: (data: any) => void;
 }
 
@@ -131,8 +137,6 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 // --- Provider Component ---
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  // 1. Initialize State from LocalStorage (Optimistic Default)
-  // We use refs to hold the initial local state to compare against DB later
   const [drills, setDrills] = useState<Drill[]>(() => {
     const saved = safeJsonParse<Drill[]>(localStorage.getItem('tactics-lab-drills'), []);
     return (saved ?? []).map(normalizeDrill);
@@ -175,82 +179,99 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [terms, setTerms] = useState<Term[]>(() => {
       return safeJsonParse<Term[]>(localStorage.getItem('tactics-lab-terms'), []);
   });
+  const [dayEvents, setDayEvents] = useState<DayEvent[]>(() => {
+      return safeJsonParse<DayEvent[]>(localStorage.getItem('tactics-lab-day-events'), []);
+  });
 
-  // Ref to hold latest state for sync (avoids infinite dependency loop)
   const stateRef = useRef({
-      drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms
+      drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents
   });
 
   useEffect(() => {
-      stateRef.current = { drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms };
-  }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms]);
+      stateRef.current = { drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents };
+  }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents]);
 
-  // Track sync state
   const hasSynced = useRef(false);
   const lastSyncTime = useRef(0);
 
-  // Sync Logic
-  const forceSync = useCallback(async () => {
+  const forceSync = useCallback(async (direction: 'auto' | 'upload' | 'download' = 'auto') => {
     if (!isSupabaseEnabled) return;
-    
-    // Throttle: Prevent multiple syncs within 5 seconds
-    if (Date.now() - lastSyncTime.current < 5000) return;
+    if (direction === 'auto' && Date.now() - lastSyncTime.current < 5000) return;
     lastSyncTime.current = Date.now();
 
-    // Use ref state to avoid stale closures without triggering re-renders
     const localState = stateRef.current;
+
+    const uploadTable = async (tableName: string, localData: any[]) => {
+        if (!localData || localData.length === 0) return;
+        const uniqueData = Array.from(new Map(localData.map(item => [item.id, item])).values());
+        
+        let sanitized: any[];
+        if (tableName === 'locations') {
+           sanitized = uniqueData.map(item => ({ id: item.id, name: item.name, color: item.sessionType, courts: [] }));
+        } else {
+           sanitized = uniqueData.map(item => {
+              const transformed = transformData(JSON.parse(JSON.stringify(item)), toSnakeCase);
+              delete transformed.user_id;
+              // Clean up derived or missing properties that aren't in DB schema
+              if (tableName === 'training_sessions') {
+                 delete transformed.date_obj;
+                 delete transformed.start_hour;
+                 delete transformed.participants;
+              }
+              if (tableName === 'players') {
+                 // Ensure we don't send anything that might clash or doesn't exist
+                 delete transformed.age; // Usually derived from dob
+              }
+              return transformed;
+           });
+        }
+        
+        const { error: uploadError } = await supabase.from(tableName).upsert(sanitized, { onConflict: 'id' });
+        if (uploadError) console.warn(`Upload failed (${tableName}):`, uploadError.message);
+    };
 
     const syncTable = async (tableName: string, localData: any[], setter: React.Dispatch<React.SetStateAction<any[]>>) => {
         try {
+            if (direction === 'upload') {
+                await uploadTable(tableName, localData);
+                return;
+            }
+
             const { data: remoteData, error } = await supabase.from(tableName).select('*');
-            
             if (error) {
-                // Silent error unless critical
                 if (error.code !== 'PGRST116') console.warn(`Sync error (${tableName}):`, error.message);
                 return;
             }
 
+            if (direction === 'download') {
+                if (remoteData && remoteData.length > 0) setter(transformData(remoteData, toCamelCase));
+                return;
+            }
+
             if (remoteData && remoteData.length > 0) {
-                // Case A: Cloud has data -> Cloud wins (Download)
-                // Transform snake_case (DB) -> camelCase (App)
                 const transformedRemote = transformData(remoteData, toCamelCase);
-                setter(transformedRemote);
-            } else if (localData.length > 0) {
-                // Case B: Cloud is empty BUT Local has data -> Seed Cloud (Upload)
-                // Deduplicate: Ensure no duplicate IDs in payload
-                const uniqueData = Array.from(new Map(localData.map(item => [item.id, item])).values());
+                const remoteMap = new Map(transformedRemote.map((item: any) => [item.id, item]));
+                const mergedMap = new Map(transformedRemote.map((item: any) => [item.id, item]));
+                const toUpload: any[] = [];
                 
-                let sanitized: any[];
-                
-                if (tableName === 'locations') {
-                   sanitized = uniqueData.map(item => ({
-                      id: item.id,
-                      name: item.name,
-                      color: item.sessionType, // Map sessionType -> color
-                      courts: [] 
-                   }));
-                } else {
-                   // Transform camelCase (App) -> snake_case (DB)
-                   sanitized = uniqueData.map(item => {
-                      const transformed = transformData(JSON.parse(JSON.stringify(item)), toSnakeCase);
-                      // Remove user_id to let Supabase Auth handle ownership (RLS)
-                      delete transformed.user_id; 
-                      return transformed;
-                   });
+                for (const localItem of (localData || [])) {
+                    const remoteItem = remoteMap.get(localItem.id);
+                    if (!remoteItem || (localItem.updatedAt || 0) > (remoteItem.updatedAt || 0)) {
+                        toUpload.push(localItem);
+                        mergedMap.set(localItem.id, localItem);
+                    }
                 }
-                
-                const { error: uploadError } = await supabase.from(tableName).upsert(sanitized, { onConflict: 'id' });
-                if (uploadError) {
-                    console.warn(`Seed failed (${tableName}):`, uploadError.message);
-                }
+                setter(Array.from(mergedMap.values()));
+                if (toUpload.length > 0) await uploadTable(tableName, toUpload);
+            } else if (localData && localData.length > 0) {
+                await uploadTable(tableName, localData);
             }
         } catch (e: any) {
-            // Squelch unless critical
+            console.error(`Sync failure for ${tableName}:`, e);
         }
     };
 
     try {
-        // Step 1: Upload independent tables
         await Promise.all([
             syncTable('clients', localState.clients, setClients), 
             syncTable('drills', localState.drills, setDrills),
@@ -260,27 +281,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             syncTable('training_sessions', localState.sessions, setSessions),
             syncTable('locations', localState.locations, setLocations),
             syncTable('terms', localState.terms, setTerms),
+            syncTable('day_events', localState.dayEvents, setDayEvents),
         ]);
-
-        // Step 2: Upload players (depends on clients)
         await syncTable('players', localState.players, setPlayers);
-
-        // Step 3: Upload logs (depends on players)
         await syncTable('session_logs', localState.logs, setLogs);
+    } catch (err: any) {}
+  }, []);
 
-    } catch (err: any) {
-        // Silent catch
-    }
-  }, []); // Empty dependency array = Stable function!
-
-  // 2. Supabase Sync on Mount
   useEffect(() => {
     if (!isSupabaseEnabled || hasSynced.current) return;
     hasSynced.current = true;
-    forceSync();
+    forceSync('auto');
   }, [forceSync]);
 
-  // 3. Persistence Effects (LocalStorage - Always Backup)
   useEffect(() => { localStorage.setItem('tactics-lab-drills', JSON.stringify(drills)); }, [drills]);
   useEffect(() => { localStorage.setItem('tactics-lab-templates', JSON.stringify(templates)); }, [templates]);
   useEffect(() => { localStorage.setItem('tactics-lab-sequences', JSON.stringify(sequences)); }, [sequences]);
@@ -294,42 +307,35 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { localStorage.setItem('tactics-lab-locations', JSON.stringify(locations)); }, [locations]);
   useEffect(() => { localStorage.setItem('tactics-lab-logs', JSON.stringify(logs)); }, [logs]);
   useEffect(() => { localStorage.setItem('tactics-lab-terms', JSON.stringify(terms)); }, [terms]);
+  useEffect(() => { localStorage.setItem('tactics-lab-day-events', JSON.stringify(dayEvents)); }, [dayEvents]);
 
-  // 4. Helper to Sync to Supabase
   const syncToSupabase = async (table: string, data: any, action: 'upsert' | 'delete') => {
     if (!isSupabaseEnabled) return;
-
     try {
       if (action === 'delete') {
         await supabase.from(table).delete().eq('id', data.id);
       } else {
-        // Special transformations
         let payload = transformData(data, toSnakeCase);
-        if (payload.user_id) delete payload.user_id; // Let DB handle auth ownership
-        
-        // Fix for Locations table mismatch
+        if (payload.user_id) delete payload.user_id;
         if (table === 'locations') {
-           // Map 'session_type' -> 'color' (or just drop it if schema doesn't support)
-           // Map 'default_rate' -> Drop or stash? 
-           // The SQL schema has: id, name, courts text[], color text
-           // TS has: id, name, defaultRate, sessionType
-           // We'll map sessionType to color for now to save SOMETHING
-           payload = {
-              id: data.id,
-              name: data.name,
-              color: data.sessionType, 
-              courts: [] // Default empty
-           };
+           payload = { id: data.id, name: data.name, color: data.sessionType, courts: [] };
         }
-
-        await supabase.from(table).upsert(payload);
+        if (table === 'training_sessions') {
+           delete payload.date_obj;
+           delete payload.start_hour;
+           delete payload.participants;
+        }
+        if (table === 'players') {
+           delete payload.age;
+        }
+        const { error } = await supabase.from(table).upsert(payload);
+        if (error && error.code !== 'PGRST116') console.warn(`Incremental sync failed (${table}):`, error.message);
       }
     } catch (err) {
-      console.error(`Failed to sync ${table}:`, err);
+      // Squelch
     }
   };
 
-  // 5. Actions with Dual-Write
   const addDrill = useCallback((drill: Drill) => {
     setDrills(prev => [drill, ...prev]);
     syncToSupabase('drills', drill, 'upsert');
@@ -439,8 +445,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
      syncToSupabase('session_logs', log, 'upsert');
   }, []);
 
+  const upsertDayEvent = useCallback((event: DayEvent) => {
+     setDayEvents(prev => {
+        const idx = prev.findIndex(e => e.id === event.id);
+        const now = Date.now();
+        const updatedEvent = {
+           ...event,
+           createdAt: event.createdAt || now,
+           updatedAt: now
+        };
+        if (idx >= 0) {
+           const next = [...prev];
+           next[idx] = updatedEvent;
+           return next;
+        }
+        return [...prev, updatedEvent];
+     });
+     syncToSupabase('day_events', { ...event, updatedAt: Date.now() }, 'upsert');
+  }, []);
+
+  const deleteDayEvent = useCallback((id: string) => {
+     setDayEvents(prev => prev.filter(e => e.id !== id));
+     syncToSupabase('day_events', { id }, 'delete');
+  }, []);
+
   const uploadFile = useCallback(async (bucket: string, file: File): Promise<string | null> => {
-    // If offline or not configured, fallback to Base64 (Legacy behavior)
     if (!isSupabaseEnabled) {
        return new Promise((resolve) => {
           const reader = new FileReader();
@@ -448,19 +477,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           reader.readAsDataURL(file);
        });
     }
-    
     try {
       const ext = file.name.split('.').pop();
       const path = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
-      
       const { error } = await supabase.storage.from(bucket).upload(path, file);
       if (error) throw error;
-      
       const { data } = supabase.storage.from(bucket).getPublicUrl(path);
       return data.publicUrl;
     } catch (err) {
       console.error('Upload failed, falling back to local:', err);
-      // Fallback on error
       return new Promise((resolve) => {
          const reader = new FileReader();
          reader.onloadend = () => resolve(reader.result as string);
@@ -481,43 +506,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (data.locations) setLocations(data.locations);
     if (data.logs) setLogs(data.logs);
     if (data.terms) setTerms(data.terms);
-    
-    // Trigger a sync after import to push to cloud if enabled
-    setTimeout(() => {
-      forceSync();
-    }, 1000);
+    if (data.dayEvents) setDayEvents(data.dayEvents);
+    setTimeout(() => { forceSync('upload'); }, 1000);
   }, [forceSync]);
-
-  // Ref to hold latest state for sync (avoids infinite dependency loop)
 
   return (
     <DataContext.Provider value={{
-      drills, setDrills,
-      templates, setTemplates,
-      sequences, setSequences,
-      plans, setPlans,
-      players, setPlayers,
-      clients, setClients,
-      sessions, setSessions,
-      locations, setLocations,
-      logs, setLogs,
-      terms, setTerms,
-
-      addDrill, updateDrill, deleteDrill,
-      addTemplate, updateTemplate, deleteTemplate,
-      addSequence, updateSequence, deleteSequence,
-      addPlan, updatePlan, deletePlan,
-      addPlayer, updatePlayer, deletePlayer,
-      upsertClient, upsertSession, deleteSession, upsertLog, uploadFile,
-      forceSync,
-      importData
+      drills, setDrills, templates, setTemplates, sequences, setSequences, plans, setPlans,
+      players, setPlayers, clients, setClients, sessions, setSessions, locations, setLocations,
+      logs, setLogs, terms, setTerms, dayEvents, setDayEvents,
+      addDrill, updateDrill, deleteDrill, addTemplate, updateTemplate, deleteTemplate,
+      addSequence, updateSequence, deleteSequence, addPlan, updatePlan, deletePlan,
+      addPlayer, updatePlayer, deletePlayer, upsertClient, upsertSession, deleteSession, upsertLog, 
+      upsertDayEvent, deleteDayEvent, uploadFile, forceSync, importData
     }}>
       {children}
     </DataContext.Provider>
   );
 }
-
-// --- Hook ---
 
 export function useData() {
   const context = useContext(DataContext);

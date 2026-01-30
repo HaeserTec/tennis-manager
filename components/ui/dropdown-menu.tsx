@@ -129,7 +129,7 @@ export const DropdownMenuContent = ({ className, children, align = "start" }: { 
     <div 
       ref={ref}
       className={cn(
-        "absolute z-50 mt-2 w-56 rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95 focus:outline-none",
+        "absolute z-50 mt-2 w-56 rounded-md border bg-popover p-1 text-popover-foreground shadow-md focus:outline-none",
         align === "start" && "left-0 origin-top-left",
         align === "end" && "right-0 origin-top-right",
         align === "center" && "left-1/2 -translate-x-1/2 origin-top",

@@ -53,8 +53,7 @@ export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, 
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl bg-background border border-border rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">      <div className="w-full max-w-2xl bg-background border border-border rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
         
         {/* Header */}
         <div className="p-6 border-b border-border flex items-center justify-between bg-card/50">

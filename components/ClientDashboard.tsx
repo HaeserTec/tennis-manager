@@ -133,7 +133,7 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
         <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950 p-4 md:p-8 pb-24 md:pb-8 no-scrollbar">
            {selectedPlayer ? (
               // PLAYER DETAIL VIEW
-              <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="max-w-4xl mx-auto space-y-6">
                  <div className="flex items-center gap-4 mb-6">
                     <Button variant="outline" size="sm" onClick={() => setSelectedPlayerId(null)} className="md:hidden">
                        Back

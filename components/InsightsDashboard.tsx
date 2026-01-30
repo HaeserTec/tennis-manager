@@ -28,7 +28,7 @@ export function InsightsDashboard({ players, sessions }: InsightsDashboardProps)
   }, [sessions]);
 
   return (
-    <div className="p-6 space-y-8 animate-in fade-in duration-500 pb-20 overflow-y-auto h-full custom-scrollbar">
+    <div className="p-6 space-y-8 pb-20 overflow-y-auto h-full custom-scrollbar">
       
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -117,7 +117,7 @@ export function InsightsDashboard({ players, sessions }: InsightsDashboardProps)
                      <div key={i} className="flex-1 flex flex-col items-center gap-2 group/bar">
                         <div className="w-full relative h-full flex items-end">
                            <div 
-                              className="w-full bg-gradient-to-t from-primary/80 to-purple-500 rounded-t-md opacity-80 group-hover/bar:opacity-100 transition-all duration-300 animate-bar-grow"
+                              className="w-full bg-gradient-to-t from-primary/80 to-purple-500 rounded-t-md opacity-80 group-hover/bar:opacity-100 transition-all duration-300"
                               style={{ height: `${Math.max(h, 2)}%`, animationDelay: `${i * 50}ms` }}
                            ></div>
                         </div>
@@ -207,7 +207,7 @@ export function InsightsDashboard({ players, sessions }: InsightsDashboardProps)
             </h3>
             <div className="flex-1 overflow-y-auto space-y-3 max-h-[300px] custom-scrollbar pr-2">
                {clientHealth.slice(0, 10).map((p, i) => (
-                  <div key={p.id} className="flex items-center gap-4 p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors animate-slide-in" style={{ animationDelay: `${i * 100}ms` }}>
+                  <div key={p.id} className="flex items-center gap-4 p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
                      <div className="relative h-10 w-10 shrink-0">
                          <svg className="w-full h-full transform -rotate-90">
                            <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeWidth="3" className="text-secondary" />
@@ -243,7 +243,7 @@ export function InsightsDashboard({ players, sessions }: InsightsDashboardProps)
 function StatCard({ title, value, trend, icon, color, delay, subtext }: any) {
    const isPositive = trend >= 0;
    return (
-      <div className="p-6 rounded-2xl bg-card/40 backdrop-blur border border-white/5 shadow-lg relative overflow-hidden group animate-count-up" style={{ animationDelay: `${delay}ms` }}>
+      <div className="p-6 rounded-2xl bg-card/40 backdrop-blur border border-white/5 shadow-lg relative overflow-hidden group">
          <div className="flex justify-between items-start mb-4 relative z-10">
             <div>
                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">{title}</p>

@@ -103,7 +103,7 @@ export const SelectContent = ({ children, className }: any) => {
           zIndex: 9999
       }}
       className={cn(
-        "overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in-80",
+        "overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md",
         className
       )}
     >

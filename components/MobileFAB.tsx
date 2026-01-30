@@ -65,7 +65,7 @@ export function MobileFAB({
       {/* Backdrop for click-away */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
           onClick={() => setIsOpen(false)}
         />
       )}
@@ -112,8 +112,7 @@ export function MobileFAB({
              icon={<Download className="w-5 h-5" />} 
              onClick={() => handleSelect(onInstall!)}
              active={false}
-             color="text-primary animate-pulse"
-          />
+                                       color="text-primary"          />
         )}
 
         <FabItem 

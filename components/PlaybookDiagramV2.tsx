@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { nanoid } from "@/lib/utils";
+import { nanoid, getPathLength } from "@/lib/utils";
 import type { DrillTemplate, Drill, Intensity, SessionType, Format } from "@/lib/playbook";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -330,8 +330,68 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
   const [marquee, setMarquee] = React.useState<null | { origin: { x: number; y: number }; current: { x: number; y: number }; additive: boolean }>(null);
   const [quickArrowMode, setQuickArrowMode] = React.useState(false);
   
+  // Auto-flow state for streamlined placement
+  // 'waitingForBall': Next click places ball and starts arrow
+  // 'waitingForArrowEnd': Next click finishes arrow
+  const [autoFlowState, setAutoFlowState] = React.useState<'waitingForBall' | 'waitingForArrowEnd' | null>(null);
+
   // Animation State
   const [isPlaying, setIsPlaying] = React.useState(false);
+  
+  // PERFORMANCE: Memoize path lengths so they aren't recalculated on every frame
+  const pathLengths = React.useMemo(() => {
+    const map = new Map<string, number>();
+    state.paths.forEach(p => {
+      map.set(p.id, getPathLength(p.points, p.pathType));
+    });
+    return map;
+  }, [state.paths]);
+
+  // PERFORMANCE: Pre-calculate ball indices for animation sequential logic
+  const ballAnimData = React.useMemo(() => {
+    if (!isPlaying) return { count: 0, indexMap: new Map<string, number>() };
+    
+    const ballNodesWithPaths = state.nodes
+      .filter(n => n.type === 'ball')
+      .filter(n => state.paths.some(p => {
+         const s = p.points[0];
+         return s && (s.x - n.x)**2 + (s.y - n.y)**2 < 1600;
+      }));
+    
+    return {
+      count: ballNodesWithPaths.length,
+      indexMap: new Map(ballNodesWithPaths.map((bn, i) => [bn.id, i]))
+    };
+  }, [isPlaying, state.nodes, state.paths]);
+
+  // Path progress helper for animation highlights
+  const getPathProgress = (pathId: string): number => {
+    if (!isPlaying) return 0;
+    
+    const path = state.paths.find(p => p.id === pathId);
+    if (!path || path.points.length === 0) return 0;
+    
+    const start = path.points[0];
+    const node = state.nodes.find(n => (start.x - n.x)**2 + (start.y - n.y)**2 < 1600);
+    if (!node) return 0;
+    
+    const isBall = node.type === 'ball';
+    if (isBall && animProgress < 0.5) return 0;
+    if (!isBall && animProgress > 0.5) return 1;
+
+    if (isBall) {
+      const bIdx = ballAnimData.indexMap.get(node.id) ?? -1;
+      if (bIdx === -1) return 0;
+      
+      const segmentSize = 0.5 / Math.max(1, ballAnimData.count);
+      const bStart = 0.5 + (bIdx * segmentSize);
+      const bEnd = bStart + segmentSize;
+      
+      return animProgress < bStart ? 0 : animProgress > bEnd ? 1 : (animProgress - bStart) / segmentSize;
+    } else {
+      return Math.min(1, animProgress * 2);
+    }
+  };
   const [animProgress, setAnimProgress] = React.useState(0);
   const animReqRef = React.useRef<number | null>(null);
 
@@ -460,8 +520,8 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     }
 
     let start: number | null = null;
-    const DURATION = 2000; // 2s duration
-    const PAUSE = 500; // 500ms pause at end
+    const DURATION = 4000; // 4s duration (halves current speed)
+    const PAUSE = 1000; // 1s pause at end
 
     const animate = (time: number) => {
       if (!start) start = time;
@@ -520,11 +580,13 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
       return;
     }
     // Non-ball nodes
-    const additions: DiagramNode[] = [];
+    let additions: DiagramNode[] = [];
     for (let i = 0; i < count; i++) {
       additions.push({ id: nanoid(), type, x: VB_WIDTH / 2, y: VB_HEIGHT / 2, r: 0, label: type === "text" ? "Text" : undefined });
     }
-    commit({ ...state, nodes: [...state.nodes, ...additions] });
+    let nextNodes = [...state.nodes, ...additions];
+    if (type === 'player') nextNodes = renumberPlayers(nextNodes);
+    commit({ ...state, nodes: nextNodes });
     setSelectedIds([]);
   };
 
@@ -546,6 +608,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
       nodes.push({ id: nanoid(), type: "text", x: VB_WIDTH / 2, y: VB_HEIGHT / 2, r: 0, label: "Text" });
     }
     nodes = renumberBalls(nodes);
+    nodes = renumberPlayers(nodes);
     commit({ ...state, nodes });
     setSelectedIds([]);
   };
@@ -697,10 +760,12 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
           if (drawingPath) {
             e.preventDefault();
             setDrawingPath(null);
+            setAutoFlowState(null);
             announceToScreenReader("Arrow drawing cancelled");
           } else if (placingType) {
             e.preventDefault();
             setPlacingType(null);
+            setAutoFlowState(null);
             announceToScreenReader("Placement cancelled");
           } else if (selectedIds.length) {
             e.preventDefault();
@@ -823,11 +888,21 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     return nodes;
   };
 
+  const renumberPlayers = (nodes: DiagramNode[]) => {
+    const playerIndices = nodes
+      .map((n, i) => ({ n, i }))
+      .filter((x) => x.n.type === "player");
+    
+    playerIndices.forEach(({ i }, idx) => {
+      nodes[i] = { ...nodes[i], label: String(idx + 1) };
+    });
+    return nodes;
+  };
+
   const addNodeAt = (type: NodeType, x: number, y: number, select = true) => {
      let label: string | undefined;
      
      if (type === "coach") label = "C";
-     else if (type === "player") label = "P";
      else if (type === "cone") label = "Cone";
      else if (type === "text") label = "Text";
      else if (type === "target" || type === "targetBox") {
@@ -845,6 +920,19 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
       label,
       size: type === "targetBox" ? 80 : type === "ladder" ? 120 : undefined,
     };
+
+    if (type === "player") {
+      const playerNodes = state.nodes.filter(n => n.type === 'player');
+      if (playerNodes.length === 0) {
+          // This is the first player being added - start auto-flow
+          setAutoFlowState('waitingForBall');
+      }
+      const nextNodes = renumberPlayers([...state.nodes, node]);
+      commit({ ...state, nodes: nextNodes });
+      if (select) setSelectedIds([node.id]);
+      return;
+    }
+
     if (type === "ball") {
       const ballCount = state.nodes.filter((n) => n.type === "ball").length;
       if (ballCount >= 10) return; // max balls
@@ -866,7 +954,8 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     const idSet = new Set(selectedIds);
     // Remove Nodes
     const filteredNodes = state.nodes.filter((n) => !idSet.has(n.id));
-    const nextNodes = renumberBalls([...filteredNodes]);
+    let nextNodes = renumberBalls([...filteredNodes]);
+    nextNodes = renumberPlayers(nextNodes);
     // Remove Paths
     const filteredPaths = state.paths.filter((p) => !idSet.has(p.id));
     
@@ -896,7 +985,8 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
       points: path.points.map(pt => ({ x: pt.x + 20, y: pt.y + 20 }))
     }));
 
-    const nodes = renumberBalls([...state.nodes, ...copiedNodes]);
+    let nodes = renumberBalls([...state.nodes, ...copiedNodes]);
+    nodes = renumberPlayers(nodes);
     const paths = [...state.paths, ...copiedPaths];
     
     commit({ ...state, nodes, paths });
@@ -1123,7 +1213,49 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
   const onStartSvg = (e: React.MouseEvent | React.TouchEvent) => {
       // Check button only for mouse events
-      if ('button' in e && e.button !== 0 && !drawingPath && !placingType) return;
+      if ('button' in e && e.button !== 0 && !drawingPath && !placingType && !autoFlowState) return;
+
+      // Auto-Flow Logic (Streamlined Ball & Arrow)
+      if (autoFlowState === 'waitingForBall') {
+          const pt = getSvgPoint(e);
+          const x = snap(pt.x);
+          const y = snap(pt.y);
+          
+          // Place Ball
+          const ballId = nanoid();
+          const ballNode: DiagramNode = { id: ballId, type: 'ball', x, y, r: 0 };
+          
+          // Apply ball numbering
+          const nextNodes = renumberBalls([...state.nodes, ballNode]);
+          commit({ ...state, nodes: nextNodes });
+          
+          // Start Arrow drawing state (Dotted for direction)
+          setDrawingPath({ id: nanoid(), points: [{ x, y }], pathType: 'linear', lineStyle: 'dotted', width: 3 });
+          setAutoFlowState('waitingForArrowEnd');
+          announceToScreenReader("Ball placed. Click to finish direction arrow.");
+          return;
+      }
+
+      if (autoFlowState === 'waitingForArrowEnd' && drawingPath) {
+          const pt = getSvgPoint(e);
+          const pts = [...drawingPath.points, { x: snap(pt.x), y: snap(pt.y) }];
+          commit({ 
+              ...state, 
+              paths: [...state.paths, { 
+                  id: drawingPath.id, 
+                  points: pts, 
+                  color: arrowColor, 
+                  pathType: 'linear', 
+                  lineStyle: 'dotted', 
+                  width: 3,
+                  arrowHead: 'filled'
+              }] 
+          });
+          setDrawingPath(null);
+          setAutoFlowState(null);
+          announceToScreenReader("Arrow finished.");
+          return;
+      }
 
       if (drawingPath) {
         const pt = getSvgPoint(e);
@@ -1261,6 +1393,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
         setDrawingPath(null);
         setPlacingType(null);
         setQuickArrowMode(false);
+        setAutoFlowState(null);
         
         // Handle selection clearing only if no tool was active
         if (!drawingPath && !placingType && !quickArrowMode) {
@@ -1774,9 +1907,8 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
   return (
     <TooltipProvider>
     {/* Shortcuts Help Modal */}
-    {showShortcuts && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in" onClick={() => setShowShortcuts(false)}>
-           <div className="bg-card border border-border p-6 rounded-xl shadow-2xl max-w-sm w-full" onClick={e => e.stopPropagation()}>
+          {showShortcuts && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowShortcuts(false)}>           <div className="bg-card border border-border p-6 rounded-xl shadow-2xl max-w-sm w-full" onClick={e => e.stopPropagation()}>
                <div className="flex justify-between items-center mb-4">
                   <h3 className="font-bold text-lg text-foreground">Keyboard Shortcuts</h3>
                   <Button variant="ghost" size="sm" className="h-6 w-6 p-0 rounded-full" onClick={() => setShowShortcuts(false)}>✕</Button>
@@ -1796,21 +1928,20 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
         </div>
     )}
 
-    <Card className={cn("border border-primary/10 bg-background flex flex-col overflow-hidden h-full shadow-[0_0_40px_-10px_hsl(var(--primary)/0.15)] rounded-xl", fill && "flex-1")}>
+    <Card className={cn("border border-white/5 glass flex flex-col overflow-hidden h-full shadow-2xl rounded-2xl", fill && "flex-1")}>
       {showHeader && (
-        <CardHeader className="hidden md:flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 px-4 border-b border-primary/10 bg-card/40 backdrop-blur-sm z-10">
-        <div className="flex items-center gap-2">
-           <div className="bg-primary/20 p-1.5 rounded-md text-primary shadow-[0_0_10px_-3px_hsl(var(--primary)/0.3)]">
-             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+        <CardHeader className="hidden md:flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 px-6 border-b border-white/5 bg-white/5 backdrop-blur-xl z-10">
+        <div className="flex items-center gap-3">
+                       <div className="bg-primary/20 p-2 rounded-xl text-primary glow-primary border border-primary/20">             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
            </div>
            <div>
-              <CardTitle className="text-sm font-bold text-foreground tracking-wide">Court Diagram</CardTitle>
-              <p className="text-[10px] text-muted-foreground font-medium">Drag & Drop Editor</p>
+              <CardTitle className="text-sm font-black text-foreground uppercase tracking-wider">Court Designer</CardTitle>
+              <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] opacity-60">Tactical Editor</p>
            </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 bg-card/60 p-1 rounded-lg border border-border/50">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5 glass p-1.5 rounded-xl border border-white/5 shadow-lg">
           {/* Templates Dropdown */}
           <div className="w-px h-4 bg-muted mx-1"></div>
           
@@ -1882,14 +2013,14 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
           {/* Drawing actions */}
           {drawingPath ? (
-            <div className="flex items-center gap-1 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-1">
               <Button variant="secondary" size="sm" className="h-8 text-xs text-muted-foreground hover:text-foreground" onClick={cancelArrow}>Cancel</Button>
             </div>
           ) : null}
           
           {/* Placing actions */}
           {placingType ? (
-             <div className="flex items-center gap-1 animate-in fade-in zoom-in-95">
+             <div className="flex items-center gap-1">
               <div className="h-8 px-3 flex items-center bg-primary/20 text-primary text-xs rounded-md border border-primary/20 font-medium">
                  Click map to place {placingType}
               </div>
@@ -2049,7 +2180,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
           <div
             ref={toolbarRef}
             className={cn(
-              "absolute z-20 flex items-center gap-1 p-1 bg-card border border-border rounded-lg shadow-xl animate-in fade-in slide-in-from-top-4",
+              "absolute z-20 flex items-center gap-1 p-1 bg-card border border-border rounded-lg shadow-xl",
               toolbarDragging && "cursor-grabbing"
             )}
             style={{
@@ -2241,7 +2372,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
           {selectedIds.length > 0 && selectionBounds && (
             <div 
               className={cn(
-                "absolute z-30 flex items-center gap-3 p-2.5 rounded-full border border-primary/20 bg-card/95 shadow-[0_8px_32px_-4px_hsl(var(--primary)/0.25)] backdrop-blur-md animate-in fade-in duration-200 whitespace-nowrap",
+                "absolute z-30 flex items-center gap-3 p-2.5 rounded-full border border-primary/20 bg-card/95 shadow-[0_8px_32px_-4px_hsl(var(--primary)/0.25)] backdrop-blur-md whitespace-nowrap",
                 dragging && "pointer-events-none opacity-50"
               )}
               style={{
@@ -2437,7 +2568,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                 <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor="#000" floodOpacity="0.35" />
               </filter>
               <filter id="pathGlow">
-                <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="white" floodOpacity="0.4" />
+                <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="white" floodOpacity="0.3" />
               </filter>
             </defs>
             {/* court */}
@@ -2481,6 +2612,11 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
               
               const markerId = p.arrowHead === 'outlined' ? 'url(#arrowhead-outlined)' : 'url(#arrowhead-filled)';
               
+              // PERFORMANCE: Use memoized length and faster progress calculation
+              const pProgress = getPathProgress(p.id);
+              const pLength = pathLengths.get(p.id) || 0;
+              const dashOffset = pLength * (1 - pProgress);
+
               // Dash array logic
               let strokeDasharray: string | undefined;
               if (p.lineStyle === 'dashed') strokeDasharray = "12 8";
@@ -2509,7 +2645,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                     />
                   )}
                   
-                  {/* Visible Path */}
+                  {/* Base Path (30% opacity during animation) */}
                   {isCurve ? (
                     <path
                        d={pathD}
@@ -2520,7 +2656,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                        strokeLinejoin="round"
                        strokeDasharray={strokeDasharray}
                        markerEnd={markerId}
-                       opacity={0.9}
+                       opacity={isPlaying ? 0.3 : 0.9}
                        style={{ filter: isSelected ? 'url(#pathGlow)' : undefined }}
                     />
                   ) : (
@@ -2533,9 +2669,40 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                       strokeDasharray={strokeDasharray}
                       markerEnd={markerId}
                       points={p.points.map((pt) => `${pt.x},${pt.y}`).join(" ")}
-                      opacity={0.9}
+                      opacity={isPlaying ? 0.3 : 0.9}
                       style={{ filter: isSelected ? 'url(#pathGlow)' : undefined }}
                     />
+                  )}
+
+                  {/* Animation Overlay (Glow) */}
+                  {isPlaying && (
+                    isCurve ? (
+                      <path
+                        d={pathD}
+                        fill="none"
+                        stroke={p.color || '#ffffff'}
+                        strokeWidth={(p.width ?? 3) + 2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeDasharray={pLength}
+                        strokeDashoffset={dashOffset}
+                        opacity={1}
+                        style={{ filter: 'url(#pathGlow)' }}
+                      />
+                    ) : (
+                      <polyline
+                        points={p.points.map((pt) => `${pt.x},${pt.y}`).join(" ")}
+                        fill="none"
+                        stroke={p.color || '#ffffff'}
+                        strokeWidth={(p.width ?? 3) + 2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeDasharray={pLength}
+                        strokeDashoffset={dashOffset}
+                        opacity={1}
+                        style={{ filter: 'url(#pathGlow)' }}
+                      />
+                    )
                   )}
                   
                   {/* Control Lines for Curve */}
@@ -2696,7 +2863,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
             
             {/* Animated Nodes Calculation */}
             {(() => {
-               // 1. Identify Chains (Map<PathID, NextPathID>)
+               // 1. Identify Chains
                const pathChains = new Map<string, string>();
                state.paths.forEach(p1 => {
                   const end = p1.points[p1.points.length - 1];
@@ -2707,30 +2874,36 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                      if (!start) return false;
                      const dx = start.x - end.x;
                      const dy = start.y - end.y;
-                     return (dx*dx + dy*dy) < 1600; // 40px tolerance
+                     return (dx*dx + dy*dy) < 1600;
                   });
                   if (nextPath) pathChains.set(p1.id, nextPath.id);
                });
 
+               // 2. Pre-calculate ball order for sequential animation
+               const ballNodesWithPaths = state.nodes
+                 .filter(n => n.type === 'ball')
+                 .filter(n => state.paths.some(p => {
+                    const s = p.points[0];
+                    return s && (s.x - n.x)**2 + (s.y - n.y)**2 < 1600;
+                 }));
+               
+               const ballCount = ballNodesWithPaths.length;
+               const ballIndexMap = new Map(ballNodesWithPaths.map((bn, i) => [bn.id, i]));
+
                const renderNodes = state.nodes.map(n => {
                   if (!isPlaying || animProgress === 0) return n;
 
-                  // Sequential animation: Players in Phase 1 (0-0.5), Balls in Phase 2 (0.5-1.0)
                   const isBall = n.type === 'ball';
-                  const isAnimatable = n.type === 'player' || n.type === 'coach' || n.type === 'ball';
-
+                  const isAnimatable = isBall || n.type === 'player' || n.type === 'coach';
                   if (!isAnimatable) return n;
 
-                  // Balls wait for Phase 2, players/coaches animate in Phase 1
+                  // Balls wait for Phase 2
                   if (isBall && animProgress < 0.5) return n;
 
                   const primaryPath = state.paths.find(p => {
-                      if (p.pathType === 'linear' && n.type !== 'player' && n.type !== 'ball') return false;
-                      if (p.points.length === 0) return false;
-                      const start = p.points[0];
-                      const dx = start.x - n.x;
-                      const dy = start.y - n.y;
-                      return (dx*dx + dy*dy) < 1600;
+                      if (p.pathType === 'linear' && !isBall && n.type !== 'player') return false;
+                      const s = p.points[0];
+                      return s && (s.x - n.x)**2 + (s.y - n.y)**2 < 1600;
                   });
 
                   if (primaryPath) {
@@ -2739,19 +2912,22 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
                       let activePath = primaryPath;
                       let localT = 0;
-
-                      // Calculate phase-adjusted progress
                       let phaseProgress: number;
+
                       if (isBall) {
-                         // Balls: 0.5-1.0 maps to 0-1
-                         phaseProgress = (animProgress - 0.5) * 2;
+                         const bIdx = ballIndexMap.get(n.id) ?? -1;
+                         if (bIdx === -1) phaseProgress = 0;
+                         else {
+                            const segmentSize = 0.5 / Math.max(1, ballCount);
+                            const bStart = 0.5 + (bIdx * segmentSize);
+                            const bEnd = bStart + segmentSize;
+                            phaseProgress = animProgress < bStart ? 0 : animProgress > bEnd ? 1 : (animProgress - bStart) / segmentSize;
+                         }
                       } else {
-                         // Players: 0-0.5 maps to 0-1, then hold at 1
                          phaseProgress = Math.min(1, animProgress * 2);
                       }
 
                       if (secondaryPath && !isBall) {
-                         // Chained Mode for players: split phaseProgress
                          if (phaseProgress <= 0.5) {
                             activePath = primaryPath;
                             localT = phaseProgress * 2;
@@ -2760,17 +2936,14 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                             localT = (phaseProgress - 0.5) * 2;
                          }
                       } else {
-                         // Single path mode
                          activePath = primaryPath;
                          localT = phaseProgress;
                       }
 
-                      let pos;
-                      if (activePath.pathType === 'curve' && activePath.points.length === 3) {
-                          pos = getBezierPoint(localT, activePath.points[0], activePath.points[1], activePath.points[2]);
-                      } else {
-                          pos = getPolylinePoint(localT, activePath.points);
-                      }
+                      const pos = activePath.pathType === 'curve' && activePath.points.length === 3
+                          ? getBezierPoint(localT, activePath.points[0], activePath.points[1], activePath.points[2])
+                          : getPolylinePoint(localT, activePath.points);
+                      
                       return { ...n, x: pos.x, y: pos.y };
                   }
                   return n;
@@ -2887,11 +3060,14 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                 )}
                 {/* selection ring */}
                 {selectedIds.includes(n.id) ? (
-                  <circle r={n.type === 'ladder' ? 70 : 36} fill="none" stroke="hsl(var(--primary))" strokeWidth={4.5} aria-hidden="true" />
+                  <g>
+                    <circle r={n.type === 'ladder' ? 70 : 36} fill="none" stroke="hsl(var(--primary))" strokeWidth={4} opacity={0.3} style={{ filter: 'blur(8px)' }} />
+                    <circle r={n.type === 'ladder' ? 70 : 36} fill="none" stroke="hsl(var(--primary))" strokeWidth={3} aria-hidden="true" />
+                  </g>
                 ) : null}
                 {/* focus ring */}
                 {focusedNodeId === n.id && !selectedIds.includes(n.id) ? (
-                  <circle r={42} fill="none" stroke="hsl(var(--primary))" strokeWidth={3} strokeDasharray="6 6" aria-hidden="true" />
+                  <circle r={n.type === 'ladder' ? 75 : 42} fill="none" stroke="hsl(var(--primary))" strokeWidth={2} strokeDasharray="6 4" opacity={0.6} aria-hidden="true" />
                 ) : null}
               </g>
             ));
