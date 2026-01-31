@@ -157,13 +157,13 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
          const p = players.find(x => x.id === pid);
          return p ? { id: p.id, name: p.name, avatar: p.avatarColor } : { id: 'unknown', name: 'Unknown', avatar: '#ccc' };
       }),
-      startHour: parseInt(s.startTime.split(':')[0])
+      startKey: s.startTime
    })), [sessions, players]);
 
    const sessionMap = useMemo(() => {
       const map = new Map<string, any[]>();
       events.forEach(e => {
-         const key = `${e.date}::${e.startHour}::${e.location}`;
+         const key = `${e.date}::${e.startKey}::${e.location}`;
          map.set(key, [...(map.get(key) || []), e]);
       });
       return map;
@@ -199,6 +199,52 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
       }
    };
 
+   const handleResizeStart = (e: React.PointerEvent, session: TrainingSession) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startY = e.clientY;
+      const startH = parseInt(session.endTime.split(':')[0]);
+      const startM = parseInt(session.endTime.split(':')[1]);
+      const startTotalM = startH * 60 + startM;
+      
+      const onMove = (ev: PointerEvent) => {
+         const dy = ev.clientY - startY;
+         // Approximate pixel-to-minute ratio (20px = 30min -> 1px = 1.5min)
+         // Adjust sensitivity as needed based on rowHeight
+         const minutesDelta = Math.round((dy / 40) * 30 / 15) * 15; 
+         
+         let newTotalM = startTotalM + minutesDelta;
+         
+         // Enforce constraints (min 15m duration from start time)
+         const [sH, sM] = session.startTime.split(':').map(Number);
+         const sTotal = sH * 60 + sM;
+         if (newTotalM < sTotal + 15) newTotalM = sTotal + 15;
+         if (newTotalM > sTotal + 120) newTotalM = sTotal + 120; // Max 2h
+
+         const endH = Math.floor(newTotalM / 60);
+         const endM = newTotalM % 60;
+         const newEndTime = `${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`;
+         
+         // Recalculate Price
+         const durationMins = newTotalM - sTotal;
+         const baseRate = SESSION_PRICING[session.type] || 0;
+         const newPrice = Math.round((durationMins / 60) * baseRate);
+
+         // Optimistic update
+         onUpsertSession({ ...session, endTime: newEndTime, price: newPrice });
+      };
+
+      const onUp = () => {
+         window.removeEventListener('pointermove', onMove);
+         window.removeEventListener('pointerup', onUp);
+         // Final commit (already updated via optimistic, but ensures persistence)
+         onUpsertSession({ ...session, updatedAt: Date.now() });
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+   };
+
    const handleDrop = (e: React.DragEvent, date: Date, time: string) => {
       e.preventDefault();
       const dateStr = getLocalISODate(date);
@@ -211,14 +257,20 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
       }
       const player = players.find(p => p.id === transferId || p.id === draggedPlayerId);
       if (player) {
-         const targetKey = `${dateStr}::${parseInt(time.split(':')[0])}::${selectedLocation}`;
+         const targetKey = `${dateStr}::${time}::${selectedLocation}`;
          const existing = sessionMap.get(targetKey)?.[0];
          if (existing) {
             if (!existing.participantIds.includes(player.id)) {
                onUpsertSession({ ...existing, participantIds: [...existing.participantIds, player.id], updatedAt: Date.now() });
             }
          } else {
-            onUpsertSession({ id: nanoid(), date: dateStr, startTime: time, endTime: `${parseInt(time.split(':')[0])+1}:00`, location: selectedLocation, type: selectedSessionType, price: SESSION_PRICING[selectedSessionType], maxCapacity: SESSION_LIMITS[selectedSessionType], participantIds: [player.id], createdAt: Date.now(), updatedAt: Date.now() });
+            // Default 60 min duration (1 hour)
+            const [h, m] = time.split(':').map(Number);
+            const endM = m + 60;
+            const endH = h + Math.floor(endM / 60);
+            const endTime = `${String(endH).padStart(2,'0')}:${String(endM % 60).padStart(2,'0')}`;
+            
+            onUpsertSession({ id: nanoid(), date: dateStr, startTime: time, endTime, location: selectedLocation, type: selectedSessionType, price: SESSION_PRICING[selectedSessionType], maxCapacity: SESSION_LIMITS[selectedSessionType], participantIds: [player.id], createdAt: Date.now(), updatedAt: Date.now() });
          }
       }
       setDraggedPlayerId(null);
@@ -297,16 +349,16 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
             </div>
 
             <div className="flex-1 overflow-auto bg-card/5 relative">
-               {viewMode === 'week' && <WeekView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} weekDays={getWeekDays(currentDate)} onDrop={handleDrop} onEdit={setEditingSession} onRemovePlayer={handleRemovePlayerFromSession} onDragSession={setDraggedSessionId} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
+               {viewMode === 'week' && <WeekView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} weekDays={getWeekDays(currentDate)} onDrop={handleDrop} onEdit={setEditingSession} onRemovePlayer={handleRemovePlayerFromSession} onDragSession={setDraggedSessionId} onResizeStart={handleResizeStart} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
                {viewMode === 'month' && <MonthView currentDate={currentDate} events={events} dayEvents={dayEvents} location={selectedLocation} onEdit={setEditingSession} />}
-               {viewMode === 'day' && <DayView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} onDrop={handleDrop} onEdit={setEditingSession} onRemovePlayer={handleRemovePlayerFromSession} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
+               {viewMode === 'day' && <DayView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} onDrop={handleDrop} onEdit={setEditingSession} onRemovePlayer={handleRemovePlayerFromSession} onResizeStart={handleResizeStart} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
             </div>
          </div>
       </div>
    );
 }
 
-function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemovePlayer, onDragSession, location, startHour, endHour }: any) {
+function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemovePlayer, onDragSession, onResizeStart, location, startHour, endHour }: any) {
    const currentHour = new Date().getHours(), currentMinute = new Date().getMinutes();
    const blocks = useMemo(() => generateSmartBlocks(startHour, endHour, sessionMap, weekDays, location), [startHour, endHour, sessionMap, weekDays, location]);
 
@@ -328,19 +380,34 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
          </div>
          <div className="flex-1 overflow-y-auto">
             {blocks.map((block: any) => block.type === 'active' && (
-               <div key={block.hour} className={cn("grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 relative", block.rowHeight)}>
-                  <div className="border-r border-border/50 flex justify-center pt-2 bg-card/10 text-xs font-mono text-muted-foreground">{block.hour}:00</div>
+               <div key={block.time} className={cn("grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 relative", block.rowHeight)}>
+                  <div className="border-r border-border/50 flex justify-center pt-2 bg-card/10 text-xs font-mono text-muted-foreground">{block.time}</div>
                   {weekDays.map((day: Date, i: number) => {
-                     const dateStr = getLocalISODate(day), sessions = sessionMap.get(`${dateStr}::${block.hour}::${location}`) || [];
+                     const dateStr = getLocalISODate(day), sessions = sessionMap.get(`${dateStr}::${block.time}::${location}`) || [];
                      return (
-                        <div key={i} className="border-r border-border/50 p-1 flex flex-col gap-1" onDragOver={e => e.preventDefault()} onDrop={e => handleDrop(e, day, `${block.hour}:00`)}>
-                           {sessions.map((s: any) => (
-                              <div key={s.id} draggable onDragStart={(e) => { e.dataTransfer.setData('text/plain', s.id); onDragSession(s.id); }} className="w-full bg-card/50 border border-border rounded-lg p-2 shadow-sm cursor-grab">
+                        <div key={i} className="border-r border-border/50 p-1 flex flex-col gap-1" onDragOver={e => e.preventDefault()} onDrop={e => handleDrop(e, day, block.time)}>
+                           {sessions.map((s: any) => {
+                              // Calculate height based on duration
+                              const [startH, startM] = s.startTime.split(':').map(Number);
+                              const [endH, endM] = s.endTime.split(':').map(Number);
+                              const durationMins = (endH * 60 + endM) - (startH * 60 + startM);
+                              // 20px = 30min slot -> height = (duration / 30) * 20
+                              // Subtracting a bit for gaps/padding
+                              const heightPx = Math.max(20, (durationMins / 30) * 80); 
+
+                              return (
+                              <div 
+                                 key={s.id} 
+                                 draggable 
+                                 onDragStart={(e) => { e.dataTransfer.setData('text/plain', s.id); onDragSession(s.id); }} 
+                                 className="w-full bg-card/50 border border-border rounded-lg p-2 shadow-sm cursor-grab relative group overflow-hidden"
+                                 style={{ height: `${heightPx}px`, minHeight: '40px', zIndex: 10 }}
+                              >
                                  <div className="flex justify-between items-start mb-1">
                                     <span className="text-[8px] font-bold uppercase text-muted-foreground">{s.type}</span>
                                     <button onClick={() => onEdit(s)} className="text-[10px] hover:text-primary"><Edit2 className="w-2.5 h-3"/></button>
                                  </div>
-                                 <div className="space-y-0.5 overflow-y-auto custom-scrollbar flex-1">
+                                 <div className="space-y-0.5 overflow-y-auto custom-scrollbar flex-1 pb-2">
                                     {s.participants.map((p: any) => (
                                        <div key={p.id} className="flex items-center justify-between group/p text-[9px] leading-tight">
                                           <div className="flex items-center gap-1 min-w-0">
@@ -356,8 +423,15 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
                                        </div>
                                     ))}
                                  </div>
+                                 {/* Resize Handle */}
+                                 <div 
+                                    className="absolute bottom-0 left-0 right-0 h-2 cursor-s-resize hover:bg-primary/20 flex justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onPointerDown={(e) => onResizeStart(e, s)}
+                                 >
+                                    <div className="w-8 h-1 rounded-full bg-border" />
+                                 </div>
                               </div>
-                           ))}
+                           )})}
                         </div>
                      );
                   })}
@@ -398,7 +472,7 @@ function MonthView({ currentDate, events, dayEvents = [], location, onEdit }: an
    );
 }
 
-function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, location, onEdit }: any) {
+function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, location, onEdit, onResizeStart }: any) {
    const dateStr = getLocalISODate(currentDate), dayEvent = dayEvents.find((e: any) => e.date === dateStr);
    const blocks = generateSmartBlocks(8, 20, sessionMap, [currentDate], location);
    return (
@@ -406,17 +480,40 @@ function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, location, on
          {dayEvent && <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"><div className={cn("backdrop-blur-[1px] border p-6 rounded-2xl transform rotate-12 shadow-2xl", dayEvent.type === 'Rain' ? "bg-blue-500/10 border-blue-500/50" : "bg-red-500/10 border-red-500/50")}><h2 className={cn("text-4xl font-black uppercase tracking-tighter flex items-center gap-4", dayEvent.type === 'Rain' ? "text-blue-500" : "text-red-500")}>{dayEvent.type === 'Rain' ? <><CloudRain className="w-10 h-10" /> Rain Out</> : <><Ban className="w-10 h-10" /> Cancelled</>}</h2></div></div>}
          <div className="border border-border rounded-xl bg-card/20 overflow-hidden">
             {blocks.map((block: any) => block.type === 'active' && (
-               <div key={block.hour} className={cn("flex border-b border-border/50", block.rowHeight)} onDragOver={e => e.preventDefault()} onDrop={e => onDrop(e, currentDate, `${block.hour}:00`)}>
-                  <div className="w-20 shrink-0 border-r border-border/50 bg-secondary/20 flex items-center justify-center font-mono font-bold text-muted-foreground">{block.hour}:00</div>
+               <div key={block.time} className={cn("flex border-b border-border/50", block.rowHeight)} onDragOver={e => e.preventDefault()} onDrop={e => onDrop(e, currentDate, block.time)}>
+                  <div className="w-20 shrink-0 border-r border-border/50 bg-secondary/20 flex items-center justify-center font-mono font-bold text-muted-foreground">{block.time}</div>
                   <div className="flex-1 p-2 flex flex-col gap-2">
-                     {(sessionMap.get(`${dateStr}::${block.hour}::${location}`) || []).map((s: any) => (
-                        <div key={s.id} onClick={() => onEdit(s)} className="flex-1 bg-card border border-border rounded-lg p-3 shadow-sm cursor-pointer">
+                     {(sessionMap.get(`${dateStr}::${block.time}::${location}`) || []).map((s: any) => {
+                        const [startH, startM] = s.startTime.split(':').map(Number);
+                        const [endH, endM] = s.endTime.split(':').map(Number);
+                        const durationMins = (endH * 60 + endM) - (startH * 60 + startM);
+                        // 20px = 30min -> height = (duration / 30) * 20
+                        const heightPx = Math.max(20, (durationMins / 30) * 80); 
+
+                        return (
+                        <div 
+                           key={s.id} 
+                           onClick={() => onEdit(s)} 
+                           className="flex-1 bg-card border border-border rounded-lg p-3 shadow-sm cursor-pointer relative group overflow-hidden"
+                           style={{ height: `${heightPx}px`, minHeight: '60px', zIndex: 10 }}
+                        >
                            <div className="flex justify-between mb-2">
                               <div className="font-bold text-sm">{s.type} Session</div>
                               <div className="text-xs text-muted-foreground">{s.participantIds.length} Players</div>
                            </div>
+                           <div className="text-[10px] text-muted-foreground opacity-70">
+                              {s.startTime} - {s.endTime}
+                           </div>
+                           {/* Resize Handle */}
+                           <div 
+                              className="absolute bottom-0 left-0 right-0 h-3 cursor-s-resize hover:bg-primary/20 flex justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity"
+                              onPointerDown={(e) => onResizeStart(e, s)}
+                              onClick={(e) => e.stopPropagation()}
+                           >
+                              <div className="w-12 h-1 rounded-full bg-border" />
+                           </div>
                         </div>
-                     ))}
+                     )})}
                   </div>
                </div>
             ))}
@@ -426,18 +523,35 @@ function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, location, on
 }
 
 function generateSmartBlocks(startHour: number, endHour: number, sessionMap: any, days: Date[], location: string) {
-   const activeHours = new Set<number>();
-   for (let h = 13; h < endHour; h++) activeHours.add(h);
+   const activeSlots = new Set<string>();
+   
+   // Default active slots (13:00 onwards)
+   for (let h = 13; h < endHour; h++) {
+      activeSlots.add(`${h}:00`);
+      activeSlots.add(`${h}:30`);
+   }
+
    days.forEach(d => {
       const dateStr = getLocalISODate(d);
-      for(let h=startHour; h<endHour; h++) {
-         if (sessionMap.get(`${dateStr}::${h}::${location}`)?.length > 0) activeHours.add(h);
+      for(let h = startHour; h < endHour; h++) {
+         const t1 = `${h}:00`;
+         const t2 = `${h}:30`;
+         // Loose check for sessions starting in this slot
+         if (sessionMap.get(`${dateStr}::${t1}::${location}`)?.length > 0) activeSlots.add(t1);
+         if (sessionMap.get(`${dateStr}::${t2}::${location}`)?.length > 0) activeSlots.add(t2);
       }
    });
+
    const blocks: any[] = [];
    for (let h = startHour; h < endHour; h++) {
-      if (activeHours.has(h)) blocks.push({ type: 'active', hour: h, rowHeight: 'h-24' });
-      else blocks.push({ type: 'gap', start: h, end: h+1 });
+      const t1 = `${h}:00`;
+      const t2 = `${h}:30`;
+      
+      if (activeSlots.has(t1)) blocks.push({ type: 'active', time: t1, rowHeight: 'h-20' });
+      else blocks.push({ type: 'gap', time: t1 });
+
+      if (activeSlots.has(t2)) blocks.push({ type: 'active', time: t2, rowHeight: 'h-20' });
+      else blocks.push({ type: 'gap', time: t2 });
    }
    return blocks;
 }

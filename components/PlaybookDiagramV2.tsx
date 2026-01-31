@@ -337,6 +337,8 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
   // Animation State
   const [isPlaying, setIsPlaying] = React.useState(false);
+  const [animProgress, setAnimProgress] = React.useState(0);
+  const animReqRef = React.useRef<number | null>(null);
   
   // PERFORMANCE: Memoize path lengths so they aren't recalculated on every frame
   const pathLengths = React.useMemo(() => {
@@ -364,36 +366,121 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     };
   }, [isPlaying, state.nodes, state.paths]);
 
-  // Path progress helper for animation highlights
-  const getPathProgress = (pathId: string): number => {
-    if (!isPlaying) return 0;
+  // Animation Loop
+  React.useEffect(() => {
+    if (!isPlaying) {
+      setAnimProgress(0);
+      if (animReqRef.current) {
+        cancelAnimationFrame(animReqRef.current);
+        animReqRef.current = null;
+      }
+      return;
+    }
+
+    let start: number | null = null;
     
+    // Dynamic Duration: 2s per "Step" (Player+Ball pair), min 4s
+    const players = state.nodes.filter(n => n.type === 'player');
+    const balls = state.nodes.filter(n => n.type === 'ball');
+    const maxSteps = Math.max(1, players.length, balls.length);
+    const DURATION = Math.max(4000, maxSteps * 2000); 
+    
+    const PAUSE = 1000; // 1s pause at end
+
+    const animate = (time: number) => {
+      if (!start) start = time;
+      const elapsed = time - start;
+      const totalCycle = DURATION + PAUSE;
+      const t = (elapsed % totalCycle) / DURATION;
+      
+      setAnimProgress(Math.min(1, t));
+      animReqRef.current = requestAnimationFrame(animate);
+    };
+
+    animReqRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animReqRef.current) cancelAnimationFrame(animReqRef.current);
+    };
+  }, [isPlaying, state.nodes]);
+
+  // Synchronized Path Progress Helper
+  const getSyncedPathProgress = (pathId: string): number => {
+    if (!isPlaying || animProgress === 0) return 0;
+
     const path = state.paths.find(p => p.id === pathId);
     if (!path || path.points.length === 0) return 0;
-    
-    const start = path.points[0];
-    const node = state.nodes.find(n => (start.x - n.x)**2 + (start.y - n.y)**2 < 1600);
-    if (!node) return 0;
-    
-    const isBall = node.type === 'ball';
-    if (isBall && animProgress < 0.5) return 0;
-    if (!isBall && animProgress > 0.5) return 1;
 
-    if (isBall) {
-      const bIdx = ballAnimData.indexMap.get(node.id) ?? -1;
-      if (bIdx === -1) return 0;
-      
-      const segmentSize = 0.5 / Math.max(1, ballAnimData.count);
-      const bStart = 0.5 + (bIdx * segmentSize);
-      const bEnd = bStart + segmentSize;
-      
-      return animProgress < bStart ? 0 : animProgress > bEnd ? 1 : (animProgress - bStart) / segmentSize;
-    } else {
-      return Math.min(1, animProgress * 2);
+    // 1. Identify start node to determine Step Index
+    const start = path.points[0];
+    const startNode = state.nodes.find(n => (start.x - n.x)**2 + (start.y - n.y)**2 < 1600);
+    
+    if (!startNode) return 0;
+
+    const isPlayer = startNode.type === 'player';
+    const isCoach = startNode.type === 'coach';
+    const isBall = startNode.type === 'ball';
+
+    if (!isPlayer && !isCoach && !isBall) return 0;
+
+    // 2. Determine Step Index
+    let stepIndex = 0;
+    if (isPlayer) stepIndex = Math.max(0, parseInt(startNode.label || '1') - 1);
+    else if (isBall) stepIndex = Math.max(0, parseInt(startNode.label || '1') - 1);
+    
+    // 3. Determine Time Window
+    const players = state.nodes.filter(n => n.type === 'player');
+    const balls = state.nodes.filter(n => n.type === 'ball');
+    const maxSteps = Math.max(players.length, balls.length, 1);
+    const stepDuration = 1 / maxSteps;
+    
+    const stepStart = stepIndex * stepDuration;
+    const stepEnd = stepStart + stepDuration;
+
+    // Not in this step yet?
+    if (animProgress < stepStart) return 0;
+    if (animProgress > stepEnd) return 1;
+
+    // Local Progress (0-1) within the Step
+    const localStepProgress = (animProgress - stepStart) / stepDuration;
+
+    // 4. Phase Logic (Sync with Node Movement)
+    // Player/Coach moves 0.0-0.5, Ball moves 0.5-1.0
+    // But we need to check if the PARTNER exists to know if we are splitting the step or taking the whole thing.
+    
+    let windowStart = 0;
+    let windowEnd = 1;
+
+    if (isPlayer || isCoach) {
+        // Does Ball N exist and have a path?
+        const partnerBall = balls.find(b => parseInt(b.label || '0') === (stepIndex + 1));
+        const ballHasPath = partnerBall && state.paths.some(p => {
+           const s = p.points[0];
+           return s && (s.x - partnerBall.x)**2 + (s.y - partnerBall.y)**2 < 1600;
+        });
+        
+        if (ballHasPath) {
+           windowStart = 0;
+           windowEnd = 0.5;
+        }
+    } else if (isBall) {
+        // Does Player N exist and have a path?
+        const partnerPlayer = players.find(p => parseInt(p.label || '0') === (stepIndex + 1));
+        const playerHasPath = partnerPlayer && state.paths.some(p => {
+           const s = p.points[0];
+           return s && (s.x - partnerPlayer.x)**2 + (s.y - partnerPlayer.y)**2 < 1600;
+        });
+
+        if (playerHasPath) {
+           windowStart = 0.5;
+           windowEnd = 1;
+        }
     }
+
+    if (localStepProgress < windowStart) return 0;
+    if (localStepProgress > windowEnd) return 1;
+    
+    return (localStepProgress - windowStart) / (windowEnd - windowStart);
   };
-  const [animProgress, setAnimProgress] = React.useState(0);
-  const animReqRef = React.useRef<number | null>(null);
 
   // Exit Quick Arrow Mode on off-canvas click
   React.useEffect(() => {
@@ -507,37 +594,6 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     setToolbarCollapsed((prev) => !prev);
     toolbarDragMovedRef.current = false;
   };
-
-  // Animation Loop
-  React.useEffect(() => {
-    if (!isPlaying) {
-      setAnimProgress(0);
-      if (animReqRef.current) {
-        cancelAnimationFrame(animReqRef.current);
-        animReqRef.current = null;
-      }
-      return;
-    }
-
-    let start: number | null = null;
-    const DURATION = 4000; // 4s duration (halves current speed)
-    const PAUSE = 1000; // 1s pause at end
-
-    const animate = (time: number) => {
-      if (!start) start = time;
-      const elapsed = time - start;
-      const totalCycle = DURATION + PAUSE;
-      const t = (elapsed % totalCycle) / DURATION;
-      
-      setAnimProgress(Math.min(1, t));
-      animReqRef.current = requestAnimationFrame(animate);
-    };
-
-    animReqRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (animReqRef.current) cancelAnimationFrame(animReqRef.current);
-    };
-  }, [isPlaying]);
 
   const getEffectiveColor = React.useCallback(() => {
     if (primaryPath) return primaryPath.color || '#ffffff';
@@ -903,6 +959,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
      let label: string | undefined;
      
      if (type === "coach") label = "C";
+     else if (type === "player") label = "1"; // Default for first player
      else if (type === "cone") label = "Cone";
      else if (type === "text") label = "Text";
      else if (type === "target" || type === "targetBox") {
@@ -924,10 +981,10 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     if (type === "player") {
       const playerNodes = state.nodes.filter(n => n.type === 'player');
       if (playerNodes.length === 0) {
-          // This is the first player being added - start auto-flow
           setAutoFlowState('waitingForBall');
       }
-      const nextNodes = renumberPlayers([...state.nodes, node]);
+      let nextNodes = [...state.nodes, node];
+      nextNodes = renumberPlayers(nextNodes);
       commit({ ...state, nodes: nextNodes });
       if (select) setSelectedIds([node.id]);
       return;
@@ -935,8 +992,9 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
     if (type === "ball") {
       const ballCount = state.nodes.filter((n) => n.type === "ball").length;
-      if (ballCount >= 10) return; // max balls
-      const nextNodes = renumberBalls([...state.nodes, node]);
+      if (ballCount >= 10) return;
+      let nextNodes = [...state.nodes, node];
+      nextNodes = renumberBalls(nextNodes);
       commit({ ...state, nodes: nextNodes });
       if (select) setSelectedIds([node.id]);
       return;
@@ -1221,13 +1279,8 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
           const x = snap(pt.x);
           const y = snap(pt.y);
           
-          // Place Ball
-          const ballId = nanoid();
-          const ballNode: DiagramNode = { id: ballId, type: 'ball', x, y, r: 0 };
-          
-          // Apply ball numbering
-          const nextNodes = renumberBalls([...state.nodes, ballNode]);
-          commit({ ...state, nodes: nextNodes });
+          // Use standard helper to place ball (handles renumbering & history)
+          addNodeAt('ball', x, y, false);
           
           // Start Arrow drawing state (Dotted for direction)
           setDrawingPath({ id: nanoid(), points: [{ x, y }], pathType: 'linear', lineStyle: 'dotted', width: 3 });
@@ -1239,18 +1292,21 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
       if (autoFlowState === 'waitingForArrowEnd' && drawingPath) {
           const pt = getSvgPoint(e);
           const pts = [...drawingPath.points, { x: snap(pt.x), y: snap(pt.y) }];
+          const newPath: DiagramPath = { 
+              id: drawingPath.id, 
+              points: pts, 
+              color: arrowColor, 
+              pathType: 'linear', 
+              lineStyle: 'dotted', 
+              width: 3,
+              arrowHead: 'filled'
+          };
+          
           commit({ 
               ...state, 
-              paths: [...state.paths, { 
-                  id: drawingPath.id, 
-                  points: pts, 
-                  color: arrowColor, 
-                  pathType: 'linear', 
-                  lineStyle: 'dotted', 
-                  width: 3,
-                  arrowHead: 'filled'
-              }] 
+              paths: [...state.paths, newPath] 
           });
+          
           setDrawingPath(null);
           setAutoFlowState(null);
           announceToScreenReader("Arrow finished.");
@@ -2613,7 +2669,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
               const markerId = p.arrowHead === 'outlined' ? 'url(#arrowhead-outlined)' : 'url(#arrowhead-filled)';
               
               // PERFORMANCE: Use memoized length and faster progress calculation
-              const pProgress = getPathProgress(p.id);
+              const pProgress = getSyncedPathProgress(p.id);
               const pLength = pathLengths.get(p.id) || 0;
               const dashOffset = pLength * (1 - pProgress);
 
@@ -2657,7 +2713,6 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                        strokeDasharray={strokeDasharray}
                        markerEnd={markerId}
                        opacity={isPlaying ? 0.3 : 0.9}
-                       style={{ filter: isSelected ? 'url(#pathGlow)' : undefined }}
                     />
                   ) : (
                     <polyline
@@ -2670,7 +2725,6 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                       markerEnd={markerId}
                       points={p.points.map((pt) => `${pt.x},${pt.y}`).join(" ")}
                       opacity={isPlaying ? 0.3 : 0.9}
-                      style={{ filter: isSelected ? 'url(#pathGlow)' : undefined }}
                     />
                   )}
 
@@ -2687,7 +2741,6 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                         strokeDasharray={pLength}
                         strokeDashoffset={dashOffset}
                         opacity={1}
-                        style={{ filter: 'url(#pathGlow)' }}
                       />
                     ) : (
                       <polyline
@@ -2700,7 +2753,6 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                         strokeDasharray={pLength}
                         strokeDashoffset={dashOffset}
                         opacity={1}
-                        style={{ filter: 'url(#pathGlow)' }}
                       />
                     )
                   )}
@@ -2879,74 +2931,118 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                   if (nextPath) pathChains.set(p1.id, nextPath.id);
                });
 
-               // 2. Pre-calculate ball order for sequential animation
-               const ballNodesWithPaths = state.nodes
-                 .filter(n => n.type === 'ball')
-                 .filter(n => state.paths.some(p => {
-                    const s = p.points[0];
-                    return s && (s.x - n.x)**2 + (s.y - n.y)**2 < 1600;
-                 }));
+               // 2. Interleaved Animation Sequence (Player 1 -> Ball 1 -> Player 2 -> Ball 2 ...)
+               const players = state.nodes.filter(n => n.type === 'player').sort((a,b) => (parseInt(a.label||'0') - parseInt(b.label||'0')));
+               const balls = state.nodes.filter(n => n.type === 'ball').sort((a,b) => (parseInt(a.label||'0') - parseInt(b.label||'0')));
                
-               const ballCount = ballNodesWithPaths.length;
-               const ballIndexMap = new Map(ballNodesWithPaths.map((bn, i) => [bn.id, i]));
+               const maxSteps = Math.max(players.length, balls.length);
+               const stepDuration = 1 / Math.max(1, maxSteps);
 
                const renderNodes = state.nodes.map(n => {
                   if (!isPlaying || animProgress === 0) return n;
 
                   const isBall = n.type === 'ball';
-                  const isAnimatable = isBall || n.type === 'player' || n.type === 'coach';
-                  if (!isAnimatable) return n;
+                  const isPlayer = n.type === 'player';
+                  const isCoach = n.type === 'coach'; // Coaches animate with Step 0 (Player 1) or independent? Let's bind to Step 0 for now.
 
-                  // Balls wait for Phase 2
-                  if (isBall && animProgress < 0.5) return n;
+                  if (!isBall && !isPlayer && !isCoach) return n;
 
+                  // Determine Step Index
+                  let stepIndex = 0;
+                  if (isPlayer) stepIndex = Math.max(0, parseInt(n.label || '1') - 1);
+                  else if (isBall) stepIndex = Math.max(0, parseInt(n.label || '1') - 1);
+                  else if (isCoach) stepIndex = 0; // Coach moves with first group
+
+                  // Calculate Step Time Window
+                  const stepStart = stepIndex * stepDuration;
+                  const stepEnd = stepStart + stepDuration;
+
+                  // If we are not in this step yet, stay at start. If past, stay at end.
+                  if (animProgress < stepStart) return n; // Not started yet (render at origin)
+                  
+                  // Local Progress within this Step (0-1)
+                  let localStepProgress = (Math.min(animProgress, stepEnd) - stepStart) / stepDuration;
+                  if (animProgress >= stepEnd) localStepProgress = 1;
+
+                  // Logic: Player moves 0.0-0.5, Ball moves 0.5-1.0
+                  // EXCEPT: If corresponding partner is missing path, take full slot? 
+                  // Simplified Requirement: Player 1 MUST move before Ball 1.
+                  
+                  // Check if this node has a path
                   const primaryPath = state.paths.find(p => {
-                      if (p.pathType === 'linear' && !isBall && n.type !== 'player') return false;
+                      // Link path to node (proximity check at start)
                       const s = p.points[0];
                       return s && (s.x - n.x)**2 + (s.y - n.y)**2 < 1600;
                   });
 
-                  if (primaryPath) {
-                      const secondaryPathId = pathChains.get(primaryPath.id);
-                      const secondaryPath = secondaryPathId ? state.paths.find(p => p.id === secondaryPathId) : null;
+                  if (!primaryPath) return n; // No path, no movement
 
-                      let activePath = primaryPath;
-                      let localT = 0;
-                      let phaseProgress: number;
+                  // Check if partner has path to determine split
+                  let movesFirst = isPlayer || isCoach; 
+                  let myWindowStart = 0;
+                  let myWindowEnd = 1;
 
-                      if (isBall) {
-                         const bIdx = ballIndexMap.get(n.id) ?? -1;
-                         if (bIdx === -1) phaseProgress = 0;
-                         else {
-                            const segmentSize = 0.5 / Math.max(1, ballCount);
-                            const bStart = 0.5 + (bIdx * segmentSize);
-                            const bEnd = bStart + segmentSize;
-                            phaseProgress = animProgress < bStart ? 0 : animProgress > bEnd ? 1 : (animProgress - bStart) / segmentSize;
-                         }
-                      } else {
-                         phaseProgress = Math.min(1, animProgress * 2);
-                      }
+                  if (isPlayer || isCoach) {
+                     // I am Player N. Does Ball N exist and have a path?
+                     const partnerBall = balls[stepIndex];
+                     const ballHasPath = partnerBall && state.paths.some(p => {
+                        const s = p.points[0];
+                        return s && (s.x - partnerBall.x)**2 + (s.y - partnerBall.y)**2 < 1600;
+                     });
+                     
+                     if (ballHasPath) {
+                        myWindowStart = 0;
+                        myWindowEnd = 0.5;
+                     } else {
+                        myWindowStart = 0;
+                        myWindowEnd = 1;
+                     }
+                  } else if (isBall) {
+                     // I am Ball N. Does Player N exist and have a path?
+                     const partnerPlayer = players[stepIndex];
+                     const playerHasPath = partnerPlayer && state.paths.some(p => {
+                        const s = p.points[0];
+                        return s && (s.x - partnerPlayer.x)**2 + (s.y - partnerPlayer.y)**2 < 1600;
+                     });
 
-                      if (secondaryPath && !isBall) {
-                         if (phaseProgress <= 0.5) {
-                            activePath = primaryPath;
-                            localT = phaseProgress * 2;
-                         } else {
-                            activePath = secondaryPath;
-                            localT = (phaseProgress - 0.5) * 2;
-                         }
-                      } else {
-                         activePath = primaryPath;
-                         localT = phaseProgress;
-                      }
-
-                      const pos = activePath.pathType === 'curve' && activePath.points.length === 3
-                          ? getBezierPoint(localT, activePath.points[0], activePath.points[1], activePath.points[2])
-                          : getPolylinePoint(localT, activePath.points);
-                      
-                      return { ...n, x: pos.x, y: pos.y };
+                     if (playerHasPath) {
+                        myWindowStart = 0.5;
+                        myWindowEnd = 1;
+                     } else {
+                        myWindowStart = 0;
+                        myWindowEnd = 1;
+                     }
                   }
-                  return n;
+
+                  // Map localStepProgress to myWindow
+                  let moveProgress = 0;
+                  if (localStepProgress < myWindowStart) moveProgress = 0;
+                  else if (localStepProgress > myWindowEnd) moveProgress = 1;
+                  else moveProgress = (localStepProgress - myWindowStart) / (myWindowEnd - myWindowStart);
+
+                  // Calculate Position
+                  const secondaryPathId = pathChains.get(primaryPath.id);
+                  const secondaryPath = secondaryPathId ? state.paths.find(p => p.id === secondaryPathId) : null;
+
+                  let activePath = primaryPath;
+                  let t = moveProgress;
+
+                  if (secondaryPath) {
+                     // Split movement across chained paths
+                     if (moveProgress <= 0.5) {
+                        activePath = primaryPath;
+                        t = moveProgress * 2;
+                     } else {
+                        activePath = secondaryPath;
+                        t = (moveProgress - 0.5) * 2;
+                     }
+                  }
+
+                  const pos = activePath.pathType === 'curve' && activePath.points.length === 3
+                      ? getBezierPoint(t, activePath.points[0], activePath.points[1], activePath.points[2])
+                      : getPolylinePoint(t, activePath.points);
+                  
+                  return { ...n, x: pos.x, y: pos.y };
                });
 
                return renderNodes.filter((n) => n.type !== "targetLine").map((n) => (
@@ -2955,7 +3051,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                 transform={`translate(${n.x},${n.y}) rotate(${n.r})`}
                 onMouseDown={(e) => onStartElement(e, n.id)}
                 onTouchStart={(e) => onStartElement(e, n.id)}
-                style={{ cursor: "grab", filter: "url(#nodeShadowV2)" }}
+                style={{ cursor: "grab" }}
                 role="button"
                 aria-label={getNodeAriaLabel(n)}
                 aria-selected={selectedIds.includes(n.id)}
@@ -3061,7 +3157,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                 {/* selection ring */}
                 {selectedIds.includes(n.id) ? (
                   <g>
-                    <circle r={n.type === 'ladder' ? 70 : 36} fill="none" stroke="hsl(var(--primary))" strokeWidth={4} opacity={0.3} style={{ filter: 'blur(8px)' }} />
+                    <circle r={n.type === 'ladder' ? 70 : 36} fill="none" stroke="hsl(var(--primary))" strokeWidth={4} opacity={0.3} />
                     <circle r={n.type === 'ladder' ? 70 : 36} fill="none" stroke="hsl(var(--primary))" strokeWidth={3} aria-hidden="true" />
                   </g>
                 ) : null}

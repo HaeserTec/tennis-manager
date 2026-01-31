@@ -194,8 +194,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const hasSynced = useRef(false);
   const lastSyncTime = useRef(0);
 
+  const isImporting = useRef(false);
+
   const forceSync = useCallback(async (direction: 'auto' | 'upload' | 'download' = 'auto') => {
-    if (!isSupabaseEnabled) return;
+    if (!isSupabaseEnabled || isImporting.current) return;
+    
+    // Check for active session before syncing
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
     if (direction === 'auto' && Date.now() - lastSyncTime.current < 5000) return;
     lastSyncTime.current = Date.now();
 
@@ -205,29 +212,72 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (!localData || localData.length === 0) return;
         const uniqueData = Array.from(new Map(localData.map(item => [item.id, item])).values());
         
-        let sanitized: any[];
-        if (tableName === 'locations') {
-           sanitized = uniqueData.map(item => ({ id: item.id, name: item.name, color: item.sessionType, courts: [] }));
-        } else {
-           sanitized = uniqueData.map(item => {
-              const transformed = transformData(JSON.parse(JSON.stringify(item)), toSnakeCase);
-              delete transformed.user_id;
-              // Clean up derived or missing properties that aren't in DB schema
-              if (tableName === 'training_sessions') {
-                 delete transformed.date_obj;
-                 delete transformed.start_hour;
-                 delete transformed.participants;
-              }
-              if (tableName === 'players') {
-                 // Ensure we don't send anything that might clash or doesn't exist
-                 delete transformed.age; // Usually derived from dob
-              }
-              return transformed;
-           });
+        // SERVER TRUTH: Fetch valid client IDs from server if uploading players.
+        // We do NOT trust local state for Foreign Keys during upload.
+        let validClientIds: Set<string> = new Set();
+        if (tableName === 'players') {
+            const { data, error } = await supabase.from('clients').select('id');
+            if (data) {
+                data.forEach(c => validClientIds.add(c.id));
+            } else if (error) {
+                console.warn("Failed to fetch clients for FK validation, defaulting to stripping IDs:", error);
+            }
         }
-        
-        const { error: uploadError } = await supabase.from(tableName).upsert(sanitized, { onConflict: 'id' });
-        if (uploadError) console.warn(`Upload failed (${tableName}):`, uploadError.message);
+
+        const sanitized = uniqueData.map(item => {
+            if (tableName === 'locations') {
+                return {
+                    id: item.id,
+                    name: item.name,
+                    color: item.sessionType || item.color,
+                    courts: item.courts || [],
+                    updated_at: item.updatedAt || Date.now(),
+                    created_at: item.createdAt || Date.now()
+                };
+            }
+
+            // ONLY transform top-level keys for DB columns. 
+            const transformed: any = {};
+            Object.keys(item).forEach(key => {
+                const dbKey = toSnakeCase(key);
+                transformed[dbKey] = item[key];
+            });
+
+            delete transformed.user_id;
+            
+            // Clean up derived or missing properties
+            if (tableName === 'training_sessions') {
+                delete transformed.date_obj;
+                delete transformed.start_hour;
+                delete transformed.participants;
+            }
+            if (tableName === 'players') {
+                delete transformed.age;
+                
+                // STRICT DEFENSE: If client_id is not in our server-verified set, KILL IT.
+                // This prevents 409 errors even if the local state thinks it's valid.
+                if (transformed.client_id) {
+                   if (!validClientIds.has(transformed.client_id)) {
+                      // console.warn(`Sanitizing upload: Player ${transformed.name} has un-synced parent ${transformed.client_id}. Unlinking.`);
+                      transformed.client_id = null;
+                   }
+                }
+            }
+            return transformed;
+        });
+        // Process uploads sequentially to isolate failures and provide better error handling
+        for (const item of sanitized) {
+            const { error: uploadError } = await supabase.from(tableName).upsert(item, { onConflict: 'id' });
+            if (uploadError) {
+                console.warn(`Upload failed for item ${item.id} in ${tableName}:`, uploadError.message);
+                // If 409 (FK violation) happens on a player, retry without the client_id as a fallback
+                if (tableName === 'players' && uploadError.code === '23503') {
+                    console.warn(`Retry upload for player ${item.id} without client link.`);
+                    const fallbackItem = { ...item, client_id: null };
+                    await supabase.from(tableName).upsert(fallbackItem, { onConflict: 'id' });
+                }
+            }
+        }
     };
 
     const syncTable = async (tableName: string, localData: any[], setter: React.Dispatch<React.SetStateAction<any[]>>) => {
@@ -244,12 +294,28 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             }
 
             if (direction === 'download') {
-                if (remoteData && remoteData.length > 0) setter(transformData(remoteData, toCamelCase));
+                if (remoteData && remoteData.length > 0) {
+                    const transformedRemote = remoteData.map(item => {
+                        const camelItem: any = {};
+                        Object.keys(item).forEach(key => {
+                            camelItem[toCamelCase(key)] = item[key];
+                        });
+                        return camelItem;
+                    });
+                    setter(transformedRemote);
+                }
                 return;
             }
 
             if (remoteData && remoteData.length > 0) {
-                const transformedRemote = transformData(remoteData, toCamelCase);
+                const transformedRemote = remoteData.map(item => {
+                    const camelItem: any = {};
+                    Object.keys(item).forEach(key => {
+                        camelItem[toCamelCase(key)] = item[key];
+                    });
+                    return camelItem;
+                });
+
                 const remoteMap = new Map(transformedRemote.map((item: any) => [item.id, item]));
                 const mergedMap = new Map(transformedRemote.map((item: any) => [item.id, item]));
                 const toUpload: any[] = [];
@@ -262,7 +328,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                     }
                 }
                 setter(Array.from(mergedMap.values()));
-                if (toUpload.length > 0) await uploadTable(tableName, toUpload);
+                if (toUpload.length > 0) {
+                    await uploadTable(tableName, toUpload);
+                }
             } else if (localData && localData.length > 0) {
                 await uploadTable(tableName, localData);
             }
@@ -272,8 +340,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
 
     try {
+        // Step 1: Sync Clients FIRST (Parent records must exist before Players)
+        await syncTable('clients', localState.clients, setClients);
+
+        // Step 2: Sync Players (References Clients)
+        await syncTable('players', localState.players, setPlayers);
+
+        // Step 3: Sync everything else in parallel
         await Promise.all([
-            syncTable('clients', localState.clients, setClients), 
             syncTable('drills', localState.drills, setDrills),
             syncTable('drill_templates', localState.templates, setTemplates),
             syncTable('sequences', localState.sequences, setSequences),
@@ -282,9 +356,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             syncTable('locations', localState.locations, setLocations),
             syncTable('terms', localState.terms, setTerms),
             syncTable('day_events', localState.dayEvents, setDayEvents),
+            syncTable('session_logs', localState.logs, setLogs)
         ]);
-        await syncTable('players', localState.players, setPlayers);
-        await syncTable('session_logs', localState.logs, setLogs);
     } catch (err: any) {}
   }, []);
 
@@ -310,7 +383,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { localStorage.setItem('tactics-lab-day-events', JSON.stringify(dayEvents)); }, [dayEvents]);
 
   const syncToSupabase = async (table: string, data: any, action: 'upsert' | 'delete') => {
-    if (!isSupabaseEnabled) return;
+    if (!isSupabaseEnabled || isImporting.current) return;
+    
+    // Check for active session before syncing
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
     try {
       if (action === 'delete') {
         await supabase.from(table).delete().eq('id', data.id);
@@ -318,7 +396,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         let payload = transformData(data, toSnakeCase);
         if (payload.user_id) delete payload.user_id;
         if (table === 'locations') {
-           payload = { id: data.id, name: data.name, color: data.sessionType, courts: [] };
+           payload = { 
+               id: data.id, 
+               name: data.name, 
+               color: data.sessionType || data.color, 
+               courts: data.courts || [],
+               updated_at: data.updatedAt || Date.now(),
+               created_at: data.createdAt || Date.now()
+           };
         }
         if (table === 'training_sessions') {
            delete payload.date_obj;
@@ -496,18 +581,71 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const importData = useCallback((data: any) => {
     if (!data) return;
-    if (data.drills) setDrills(data.drills);
-    if (data.templates) setTemplates(data.templates);
-    if (data.sequences) setSequences(data.sequences);
-    if (data.plans) setPlans(data.plans);
-    if (data.players) setPlayers(data.players);
-    if (data.clients) setClients(data.clients);
-    if (data.sessions) setSessions(data.sessions);
-    if (data.locations) setLocations(data.locations);
-    if (data.logs) setLogs(data.logs);
-    if (data.terms) setTerms(data.terms);
-    if (data.dayEvents) setDayEvents(data.dayEvents);
-    setTimeout(() => { forceSync('upload'); }, 1000);
+    const stamp = nowMs();
+    isImporting.current = true;
+    
+    // Support legacy/alternate keys (e.g. sessionPlans -> plans)
+    const rawPlans = data.plans || data.sessionPlans || data.session_plans || [];
+    const rawTemplates = data.templates || data.drillTemplates || data.drill_templates || [];
+    const rawSessions = data.sessions || data.trainingSessions || data.training_sessions || [];
+    const rawEvents = data.dayEvents || data.day_events || [];
+    const rawLogs = data.logs || data.sessionLogs || data.session_logs || [];
+
+    // Prepare fresh datasets
+    const nextDrills = (data.drills || []).map((d: any) => ({ ...normalizeDrill(d), updatedAt: stamp }));
+    const nextTemplates = rawTemplates.map((t: any) => ({ ...normalizeTemplate(t), updatedAt: stamp }));
+    const nextSequences = (data.sequences || []).map((s: any) => ({ ...s, id: s.id ?? nanoid(), updatedAt: stamp }));
+    const nextPlans = rawPlans.map((p: any) => ({ ...p, id: p.id ?? nanoid(), updatedAt: stamp }));
+    const nextPlayers = (data.players || []).map((p: any) => ({ ...p, id: p.id ?? nanoid(), updatedAt: stamp }));
+    const nextClients = (data.clients || []).map((c: any) => ({ ...c, updatedAt: stamp }));
+    const nextSessions = rawSessions.map((s: any) => ({ ...s, updatedAt: stamp }));
+    const nextLocations = (data.locations || []).map((l: any) => ({ ...l, updatedAt: stamp }));
+    const nextLogs = rawLogs.map((l: any) => ({ ...l, updatedAt: stamp }));
+    const nextTerms = (data.terms || []).map((t: any) => ({ ...t, updatedAt: stamp }));
+    const nextDayEvents = rawEvents.map((e: any) => ({ ...e, updatedAt: stamp }));
+
+    // SANITIZATION: Remove dangling client references from players
+    const clientIds = new Set(nextClients.map((c: any) => c.id));
+    nextPlayers.forEach((p: any) => {
+        if (p.clientId && !clientIds.has(p.clientId)) {
+            console.warn(`Sanitizing imported player ${p.name}: removing dangling clientId ${p.clientId}`);
+            p.clientId = null;
+        }
+    });
+
+    // Update React State
+    if (data.drills) setDrills(nextDrills);
+    setTemplates(nextTemplates);
+    setSequences(nextSequences);
+    setPlans(nextPlans);
+    setPlayers(nextPlayers);
+    setClients(nextClients);
+    setSessions(nextSessions);
+    setLocations(nextLocations);
+    setLogs(nextLogs);
+    setTerms(nextTerms);
+    setDayEvents(nextDayEvents);
+
+    // Update Cache
+    stateRef.current = {
+        drills: nextDrills,
+        templates: nextTemplates,
+        sequences: nextSequences,
+        plans: nextPlans,
+        players: nextPlayers,
+        clients: nextClients,
+        sessions: nextSessions,
+        locations: nextLocations,
+        logs: nextLogs,
+        terms: nextTerms,
+        dayEvents: nextDayEvents
+    };
+
+    // Force an immediate upload
+    setTimeout(async () => { 
+        await forceSync('upload'); 
+        isImporting.current = false;
+    }, 200);
   }, [forceSync]);
 
   return (
