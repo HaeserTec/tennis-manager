@@ -6,6 +6,7 @@ import { cn, nanoid } from '@/lib/utils';
 import type { Player, PlayerStats, Drill, Client } from '@/lib/playbook';
 import { RadarChart } from '@/components/RadarChart';
 import { AcademyCourtView } from '@/components/AcademyCourtView';
+import { ClientEditPanel } from '@/components/ClientEditPanel';
 
 interface LockerRoomProps {
   players: Player[];
@@ -15,6 +16,8 @@ interface LockerRoomProps {
   onAddPlayer: (player: Player) => void;
   onUpsertClient?: (client: Client) => void;
   onDeletePlayer: (playerId: string) => void;
+  onDeleteClient?: (clientId: string) => void;
+  onMergeClients?: (sourceId: string, targetId: string) => void;
   onAssignDrill: (playerId: string, drillId: string) => void;
   onUnassignDrill: (playerId: string, drillId: string) => void;
   initialSelectedPlayerId?: string | null;
@@ -41,7 +44,7 @@ const AVATAR_COLORS = [
 
 const getRandomColor = () => AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 
-export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAddPlayer, onUpsertClient, onDeletePlayer, onAssignDrill, onUnassignDrill, initialSelectedPlayerId }: LockerRoomProps) {
+export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAddPlayer, onUpsertClient, onDeletePlayer, onDeleteClient, onMergeClients, onAssignDrill, onUnassignDrill, initialSelectedPlayerId }: LockerRoomProps) {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const listPanelRef = useRef<HTMLDivElement | null>(null);
@@ -362,13 +365,16 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
          !selectedPlayerId ? "hidden md:flex items-center justify-center text-muted-foreground" : "flex"
       )}>
         {selectedPlayer ? (
-           <PlayerDetailView 
+           <PlayerDetailView
               player={selectedPlayer}
+              players={players}
               drills={drills}
               clients={clients}
               onUpdate={onUpdatePlayer}
               onUpsertClient={onUpsertClient}
               onDelete={onDeletePlayer}
+              onDeleteClient={onDeleteClient}
+              onMergeClients={onMergeClients}
               onBack={() => setSelectedPlayerId(null)}
               onAssignDrill={onAssignDrill}
               onUnassignDrill={onUnassignDrill}
@@ -385,11 +391,12 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
   );
 }
 
-function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, onDelete, onBack, onAssignDrill, onUnassignDrill }: any) {
+function PlayerDetailView({ player, players, drills, clients, onUpdate, onUpsertClient, onDelete, onDeleteClient, onMergeClients, onBack, onAssignDrill, onUnassignDrill }: any) {
    const assignedDrillsData = drills.filter((d: Drill) => player.assignedDrills.includes(d.id));
    const fileInputRef = useRef<HTMLInputElement>(null);
    const [showColors, setShowColors] = useState(false);
-    const [activeTab, setActiveTab] = useState<'build' | 'history' | 'dna' | 'intel' | 'progress'>('build');
+   const [activeTab, setActiveTab] = useState<'build' | 'history' | 'dna' | 'intel' | 'progress'>('build');
+   const [editingClient, setEditingClient] = useState<Client | null>(null);
 
    // Client Linking State
    const [searchTerm, setSearchTerm] = useState("");
@@ -691,15 +698,20 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
                   <div className="max-w-3xl mx-auto space-y-10">
                      <Section title="Parent Account & Linking">
                         {linkedClient ? (
-                           <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between">
+                           <div className="flex items-center justify-between p-4 rounded-xl bg-card/50 border border-border">
                               <div>
                                  <p className="text-xs font-bold uppercase tracking-widest text-primary">Linked Account</p>
                                  <p className="font-bold text-lg">{linkedClient.name}</p>
                                  <p className="text-xs text-muted-foreground">{linkedClient.phone}</p>
                               </div>
-                              <Button variant="ghost" size="sm" onClick={() => onUpdate({ ...player, clientId: undefined, updatedAt: Date.now() })}>
-                                 Unlink
-                              </Button>
+                              <div className="flex gap-2">
+                                 <Button variant="outline" size="sm" onClick={() => setEditingClient(linkedClient)}>
+                                    Edit
+                                 </Button>
+                                 <Button variant="ghost" size="sm" onClick={() => onUpdate({ ...player, clientId: undefined, updatedAt: Date.now() })}>
+                                    Unlink
+                                 </Button>
+                              </div>
                            </div>
                         ) : (
                            <div className="space-y-4 bg-card/30 p-4 rounded-xl border border-border">
@@ -791,6 +803,28 @@ function PlayerDetailView({ player, drills, clients, onUpdate, onUpsertClient, o
 
              </div>
           </div>
+
+         {editingClient && (
+            <ClientEditPanel
+               client={editingClient}
+               players={players || []}
+               allClients={clients || []}
+               isOpen={true}
+               onClose={() => setEditingClient(null)}
+               onSave={(updated) => {
+                  if (onUpsertClient) onUpsertClient(updated);
+                  setEditingClient(null);
+               }}
+               onDelete={(id) => {
+                  if (onDeleteClient) onDeleteClient(id);
+                  setEditingClient(null);
+               }}
+               onMerge={(sourceId, targetId) => {
+                  if (onMergeClients) onMergeClients(sourceId, targetId);
+                  setEditingClient(null);
+               }}
+            />
+         )}
        </div>
     );
 }
