@@ -112,13 +112,13 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthState>(null);
 
   // Consume Data Context
-  const { 
+  const {
      drills, setDrills, addDrill, updateDrill, deleteDrill,
      templates, setTemplates, addTemplate, updateTemplate, deleteTemplate,
      sequences, setSequences, addSequence, deleteSequence,
      plans, setPlans, addPlan, updatePlan, deletePlan,
      players, setPlayers, addPlayer, updatePlayer, deletePlayer,
-     clients, upsertClient,
+     clients, upsertClient, deleteClient, mergeClients,
      sessions, upsertSession, deleteSession,
      locations, setLocations,
      logs, upsertLog, uploadFile,
@@ -1222,14 +1222,16 @@ export default function App() {
                }}
             />
          ) : appMode === 'office' ? (
-             <AcademyOffice 
+             <AcademyOffice
                 players={players}
                 locations={locations}
-                clients={clients} // Pass new clients
-                sessions={sessions} // Pass session state
+                clients={clients}
+                sessions={sessions}
                 onUpdatePlayer={updatePlayer}
                 onUpsertClient={upsertClient}
-                onUpsertSession={upsertSession} // Pass session handler
+                onDeleteClient={deleteClient}
+                onMergeClients={mergeClients}
+                onUpsertSession={upsertSession}
                 onDeleteSession={deleteSession}
                 onUploadFile={uploadFile}
                 onClose={handleGoHome}
