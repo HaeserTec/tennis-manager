@@ -1,6 +1,5 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Maximize2, Minimize2 } from 'lucide-react';
-import { Analytics } from '@vercel/analytics/react';
 import { PlaybookDiagramV2 } from '@/components/PlaybookDiagramV2';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1478,7 +1477,6 @@ export default function App() {
          onBackup={handleBackup}
          onImport={importData}
       />
-      <Analytics />
     </div>
   );
 }
