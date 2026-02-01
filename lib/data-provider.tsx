@@ -121,6 +121,7 @@ interface DataContextType {
 
   upsertClient: (client: Client) => void;
   deleteClient: (clientId: string) => void;
+  mergeClients: (sourceId: string, targetId: string) => void;
   upsertSession: (session: TrainingSession) => void;
   deleteSession: (id: string) => void;
   upsertLog: (log: SessionLog) => void;
@@ -505,6 +506,43 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     syncToSupabase('clients', { id: clientId }, 'delete');
   }, []);
 
+  const mergeClients = useCallback((sourceId: string, targetId: string) => {
+    const source = clients.find(c => c.id === sourceId);
+    const target = clients.find(c => c.id === targetId);
+    if (!source || !target) return;
+
+    // Create merged client - prefer most recent non-empty values
+    const merged: Client = {
+      ...target,
+      email: (source.updatedAt > target.updatedAt && source.email) ? source.email : (target.email || source.email),
+      phone: (source.updatedAt > target.updatedAt && source.phone) ? source.phone : (target.phone || source.phone),
+      notes: [target.notes, source.notes].filter(Boolean).join('\n---\n') || undefined,
+      payments: [...(target.payments || []), ...(source.payments || [])],
+      status: target.status === 'Active' || source.status === 'Active' ? 'Active' : target.status,
+      updatedAt: Date.now()
+    };
+
+    // Update all players from source to target
+    setPlayers(prev => prev.map(p =>
+      p.clientId === sourceId ? { ...p, clientId: targetId, updatedAt: Date.now() } : p
+    ));
+
+    // Upsert merged client
+    setClients(prev => {
+      const withoutSource = prev.filter(c => c.id !== sourceId);
+      const idx = withoutSource.findIndex(c => c.id === targetId);
+      if (idx >= 0) {
+        const next = [...withoutSource];
+        next[idx] = merged;
+        return next;
+      }
+      return withoutSource;
+    });
+
+    syncToSupabase('clients', merged, 'upsert');
+    syncToSupabase('clients', { id: sourceId }, 'delete');
+  }, [clients]);
+
   const upsertSession = useCallback((session: TrainingSession) => {
      setSessions(prev => {
         const idx = prev.findIndex(s => s.id === session.id);
@@ -661,7 +699,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       logs, setLogs, terms, setTerms, dayEvents, setDayEvents,
       addDrill, updateDrill, deleteDrill, addTemplate, updateTemplate, deleteTemplate,
       addSequence, updateSequence, deleteSequence, addPlan, updatePlan, deletePlan,
-      addPlayer, updatePlayer, deletePlayer, upsertClient, deleteClient, upsertSession, deleteSession, upsertLog, 
+      addPlayer, updatePlayer, deletePlayer, upsertClient, deleteClient, mergeClients, upsertSession, deleteSession, upsertLog,
       upsertDayEvent, deleteDayEvent, uploadFile, forceSync, importData
     }}>
       {children}
