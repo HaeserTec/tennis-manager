@@ -1271,6 +1271,8 @@ export default function App() {
                    if (p) updatePlayer({ ...p, assignedDrills: p.assignedDrills.filter(x => x !== did) });
                }}
                onUploadFile={uploadFile}
+               onDeleteClient={deleteClient}
+               onMergeClients={mergeClients}
             />
           ) : appMode === 'plans' ? (
               activePlanId ? (
