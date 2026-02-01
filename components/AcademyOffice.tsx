@@ -3,14 +3,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn, nanoid } from '@/lib/utils';
 import type { Player, Client, Payment, TrainingSession, SessionType, LocationConfig, DayEvent, DayEventType } from '@/lib/playbook';
-import { 
-  Check, X, Phone, Search, Calendar as CalendarIcon, Users, 
+import {
+  Check, X, Phone, Search, Calendar as CalendarIcon, Users,
   Activity, Plus, Clock, FileText, Briefcase, DollarSign,
   Trash2, ChevronLeft, ChevronRight, Edit2, SlidersHorizontal,
   Share2, CreditCard, Repeat, Lock, LockOpen, CloudRain, Ban
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InsightsDashboard } from './InsightsDashboard';
+import { ClientEditPanel } from '@/components/ClientEditPanel';
 
 interface AcademyOfficeProps {
   players: Player[];
@@ -20,6 +21,8 @@ interface AcademyOfficeProps {
   dayEvents: DayEvent[];
   onUpdatePlayer: (player: Player) => void;
   onUpsertClient: (client: Client) => void;
+  onDeleteClient?: (clientId: string) => void;
+  onMergeClients?: (sourceId: string, targetId: string) => void;
   onUpsertSession: (session: TrainingSession) => void;
   onDeleteSession: (sessionId: string) => void;
   upsertDayEvent: (event: DayEvent) => void;
@@ -53,10 +56,11 @@ const getLocalISODate = (date: Date): string => {
    return localDate.toISOString().split('T')[0];
 };
 
-export function AcademyOffice({ 
-  players, locations, clients, sessions, dayEvents = [], 
-  onUpdatePlayer, onUpsertClient, onUpsertSession, onDeleteSession, 
-  upsertDayEvent, deleteDayEvent, onClose 
+export function AcademyOffice({
+  players, locations, clients, sessions, dayEvents = [],
+  onUpdatePlayer, onUpsertClient, onDeleteClient, onMergeClients,
+  onUpsertSession, onDeleteSession,
+  upsertDayEvent, deleteDayEvent, onClose
 }: AcademyOfficeProps) {
   const [activeTab, setActiveTab] = useState<Tab>('insights');
 
@@ -99,7 +103,13 @@ export function AcademyOffice({
             />
          </div>
          <div className={cn("h-full w-full", activeTab !== 'accounts' && "hidden")}>
-            <AccountsWorkspace clients={clients} players={players} onUpsertClient={onUpsertClient} />
+            <AccountsWorkspace
+               clients={clients}
+               players={players}
+               onUpsertClient={onUpsertClient}
+               onDeleteClient={onDeleteClient}
+               onMergeClients={onMergeClients}
+            />
          </div>
          <div className={cn("h-full w-full", activeTab !== 'bookings' && "hidden")}>
             <BookingsWorkspace clients={clients} players={players} sessions={sessions} />
@@ -565,9 +575,17 @@ function generateCalendarDays(date: Date) {
    return days;
 }
 
-function AccountsWorkspace({ clients, players, onUpsertClient }: any) {
+function AccountsWorkspace({ clients, players, onUpsertClient, onDeleteClient, onMergeClients }: {
+   clients: Client[];
+   players: Player[];
+   onUpsertClient: (client: Client) => void;
+   onDeleteClient?: (clientId: string) => void;
+   onMergeClients?: (sourceId: string, targetId: string) => void;
+}) {
    const [q, setQ] = useState('');
-   const filtered = clients.filter((c: any) => c.name.toLowerCase().includes(q.toLowerCase()));
+   const [editingClient, setEditingClient] = useState<Client | null>(null);
+   const filtered = clients.filter((c: Client) => c.name.toLowerCase().includes(q.toLowerCase()));
+
    return (
       <div className="p-8 max-w-6xl mx-auto h-full overflow-y-auto">
          <div className="flex items-center justify-between mb-8">
@@ -578,13 +596,42 @@ function AccountsWorkspace({ clients, players, onUpsertClient }: any) {
             </div>
          </div>
          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((c: any) => (
-               <div key={c.id} className="p-5 rounded-2xl glass-card flex flex-col hover:border-primary/30 transition-all">
+            {filtered.map((c: Client) => (
+               <div
+                  key={c.id}
+                  onClick={() => setEditingClient(c)}
+                  className="p-5 rounded-2xl glass-card flex flex-col hover:border-primary/30 transition-all cursor-pointer"
+               >
                   <div className="font-bold text-lg">{c.name}</div>
                   <div className="text-xs text-muted-foreground">{c.phone || "No Phone"}</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                     {players.filter(p => p.clientId === c.id).length} player(s)
+                  </div>
                </div>
             ))}
          </div>
+
+         {editingClient && (
+            <ClientEditPanel
+               client={editingClient}
+               players={players}
+               allClients={clients}
+               isOpen={true}
+               onClose={() => setEditingClient(null)}
+               onSave={(updated) => {
+                  onUpsertClient(updated);
+                  setEditingClient(null);
+               }}
+               onDelete={(id) => {
+                  if (onDeleteClient) onDeleteClient(id);
+                  setEditingClient(null);
+               }}
+               onMerge={(sourceId, targetId) => {
+                  if (onMergeClients) onMergeClients(sourceId, targetId);
+                  setEditingClient(null);
+               }}
+            />
+         )}
       </div>
    );
 }
