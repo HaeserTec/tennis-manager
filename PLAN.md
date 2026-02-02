@@ -176,8 +176,28 @@ const STORAGE_KEYS = {
 | 11 | Testing & refinement | ⏳ Pending |
 
 ---
-
-## File Structure
+  
+  ## PART E: Financials & Admin Overhaul (Completed Feb 2026) ✅
+  
+  ### E.1 Financial Consolidation ✅
+  - **AccountsStatement Component:** Created a master view for all client accounts.
+  - **Logic:** Implemented "Brought Forward" (Opening Balance) logic to correctly carry over credit/debt from previous months.
+  - **Filtering:** Added month-based filtering and client search.
+  
+  ### E.2 Scheduler Enhancements ✅
+  - **Recurrence:** Added "Repeat Mode" (Month/Term) for creating session series.
+  - **Visuals:** Optimized `WeekView` to show Time + Type on one line for better density.
+  - **UX:** Removed unused "Day Markers" (Rain/Cancel) to declutter.
+  - **Fixes:** Solved resize persistence bug using mutable state closures.
+  
+  ### E.3 Client Portal 2.0 ✅
+  - **Theme:** Ported "Midnight" radial gradient theme to the client side.
+  - **Financials Tab:** Added full statement view (B/F, Fees, Paid, Balance) for parents.
+  - **Navigation:** Improved mobile navigation bar and desktop sidebar.
+  
+  ---
+  
+  ## File Structure
 
 ```
 lib/

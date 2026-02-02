@@ -69,11 +69,10 @@ Professional intake and progression tracking for 40+ students.
 - **Navigation Rail:** A permanent vertical strip for instant mode-switching (Home, Drills, Plans, Squad, Office, Templates).
 - **Mobile FAB:** A dedicated "Speed Dial" Floating Action Button for effortless navigation on touch devices.
 
-### 5. Performance & Localization
-- **ZAR/R Currency:** Native support for South African Rand (R) across all billing and rate tools.
-- **24-Hour Time:** Full integration of 24-hour time formatting for all scheduling and logs.
-- **Metric Standardization:** All measurements use the International Metric System (cm, kg).
-- **Debounced Persistence:** `localStorage` writes are debounced to ensure zero UI lag.
+### 6. Financial Intelligence & Client Portal
+- **Consolidated Accounts:** A dedicated "Bookings" workspace providing a real-time financial health check. Features monthly statements, "Brought Forward" logic for accurate running balances, and consolidated fee/payment tracking.
+- **Client Portal 2.0:** A complete redesign of the client-facing app to match the "Midnight" admin aesthetic. Includes a detailed "Money" tab for parents to view statements, transaction history, and live balances.
+- **Recurring Schedules:** "Set and Forget" logic for creating Term-based or Month-based recurring sessions with smart holiday handling.
 
 ## How to Run Locally
 

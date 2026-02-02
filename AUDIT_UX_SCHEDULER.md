@@ -17,13 +17,12 @@
 **Status:** Functional but rigid.
 
 - **Hardcoded Hours:**
-  - **Problem:** The schedule views (Day/Week) only render `13:00` to `18:00`.
-  - **Impact:** useless for morning sessions or weekend tournaments.
-  - **Recommendation:** Make start/end hours configurable in Settings or dynamic based on session data.
+  - **Status:** Resolved ✅
+  - **Note:** Start/End hours are now set to 08:00 - 20:00 to cover full day.
 
 - **Recurring Logic:**
-  - **Problem:** "Repeat for Month" blindly adds 4 weekly sessions.
-  - **Impact:** Doesn't account for holidays or month-end boundaries accurately (logic is simplistic).
+  - **Status:** Resolved ✅
+  - **Note:** Added "Repeat Mode" (Month/Term) selector and "Repeat" button for existing sessions. Logic accounts for month boundaries and Term dates.
 
 - **Conflict UX:**
   - **Problem:** `window.alert("Player already in session")` is disruptive.

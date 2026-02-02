@@ -36,3 +36,15 @@ Status:
 
 - [ ] Plans print layout uses two columns (details left, canvas right) and fits three drills on one page
   - Notes:
+
+- [ ] Accounts Statement: Opening Balance (Brought Forward) correctly sums all past history
+  - Notes:
+
+- [ ] Accounts Statement: Monthly Balance equals B/F + Fees - Paid
+  - Notes:
+
+- [ ] Scheduler: "Repeat for Term" correctly stops at term end date (SA Terms 2026)
+  - Notes:
+
+- [ ] Client Portal: Financials tab matches Admin "Bookings" statement figures exactly
+  - Notes:
