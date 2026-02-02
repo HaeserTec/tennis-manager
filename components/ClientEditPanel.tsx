@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { X, Trash2, Users, CreditCard, AlertTriangle } from 'lucide-react';
+import { X, Trash2, Users, CreditCard, AlertTriangle, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import type { Client, Player, Payment } from '@/lib/playbook';
+import type { Client, Player, Payment, TrainingSession } from '@/lib/playbook';
+import { ClientStatementDocument } from './ClientStatementDocument';
 
 interface ClientEditPanelProps {
   client: Client;
   players: Player[];
   allClients: Client[];
+  sessions: TrainingSession[];
   isOpen: boolean;
   onClose: () => void;
   onSave: (client: Client) => void;
@@ -51,6 +53,7 @@ export function ClientEditPanel({
   client,
   players,
   allClients,
+  sessions,
   isOpen,
   onClose,
   onSave,
@@ -71,6 +74,7 @@ export function ClientEditPanel({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [duplicates, setDuplicates] = useState<Client[]>([]);
   const [showMergeDialog, setShowMergeDialog] = useState(false);
+  const [showStatement, setShowStatement] = useState(false);
 
   // Linked players
   const linkedPlayers = players.filter(p => p.clientId === client.id);
@@ -161,6 +165,17 @@ export function ClientEditPanel({
   }
 
   if (!isOpen) return null;
+
+  if (showStatement) {
+     return (
+        <ClientStatementDocument 
+           client={{ ...client, payments }} 
+           players={players} 
+           sessions={sessions} 
+           onClose={() => setShowStatement(false)} 
+        />
+     );
+  }
 
   return (
     <>
@@ -333,8 +348,13 @@ export function ClientEditPanel({
 
         {/* Footer */}
         <div className="flex items-center justify-between p-4 border-t border-border shrink-0 bg-card/50">
-          <Button variant="outline" onClick={handleClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={!isDirty}>Save Changes</Button>
+          <Button variant="outline" onClick={() => setShowStatement(true)}>
+            <Printer className="w-4 h-4 mr-2" /> Print Statement
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleClose}>Cancel</Button>
+            <Button onClick={handleSave} disabled={!isDirty}>Save Changes</Button>
+          </div>
         </div>
       </div>
 

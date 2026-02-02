@@ -1248,7 +1248,8 @@ export default function App() {
             <LockerRoom 
                players={players} 
                drills={drills} 
-               clients={clients} // Pass new clients
+               clients={clients} 
+               sessions={sessions}
                initialSelectedPlayerId={pendingPlayerId}
                onUpdatePlayer={updatePlayer}
                onAddPlayer={addPlayer}

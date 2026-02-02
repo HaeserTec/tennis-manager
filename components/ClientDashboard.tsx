@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogOut, Calendar, CreditCard, Activity, User, ChevronRight, Clock, MapPin, Trophy } from 'lucide-react';
+import { LogOut, Calendar, CreditCard, Activity, User, ChevronRight, Clock, MapPin, Trophy, ChevronLeft, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Client, Player, TrainingSession, SessionLog, Drill } from '@/lib/playbook';
@@ -18,6 +18,7 @@ interface ClientDashboardProps {
 export function ClientDashboard({ client, players, sessions, logs, drills, onLogout }: ClientDashboardProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'schedule' | 'financials'>('overview');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [currentDate, setCurrentDate] = useState(new Date());
 
   // Derived Data
   const myPlayers = players
@@ -37,31 +38,71 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
 
   const handlePlayerClick = (pid: string) => {
     setSelectedPlayerId(pid);
-    setActiveTab('overview'); // Ensure we are on a view that supports the detail
+    setActiveTab('overview');
   };
 
+  // --- Financial Logic ---
+  const currentMonthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  const nextMonthStart = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+  const clientPlayerIds = new Set(myPlayers.map(p => p.id));
+
+  // 1. Opening Balance
+  let openingFees = 0;
+  let openingPayments = 0;
+  sessions.forEach(s => {
+      const sDate = new Date(s.date);
+      if (sDate < currentMonthStart && s.participantIds.some(pid => clientPlayerIds.has(pid))) {
+          const count = s.participantIds.filter(pid => clientPlayerIds.has(pid)).length;
+          openingFees += (s.price || 0) * count;
+      }
+  });
+  (client.payments || []).forEach(p => {
+      if (new Date(p.date) < currentMonthStart) openingPayments += p.amount;
+  });
+  const openingBalance = openingFees - openingPayments;
+
+  // 2. Current Month Transactions
+  const monthlySessions = sessions.filter(s => {
+      const d = new Date(s.date);
+      return d >= currentMonthStart && d < nextMonthStart && s.participantIds.some(pid => clientPlayerIds.has(pid));
+  });
+  
+  let currentFees = 0;
+  monthlySessions.forEach(s => {
+      const count = s.participantIds.filter(pid => clientPlayerIds.has(pid)).length;
+      currentFees += (s.price || 0) * count;
+  });
+  
+  const monthlyPayments = (client.payments || []).filter(p => {
+      const d = new Date(p.date);
+      return d >= currentMonthStart && d < nextMonthStart;
+  });
+  const currentPaymentTotal = monthlyPayments.reduce((acc, p) => acc + p.amount, 0);
+  
+  const closingBalance = openingBalance + currentFees - currentPaymentTotal;
+
   return (
-    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
+    <div className="flex flex-col h-screen bg-radial-gradient text-foreground font-sans overflow-hidden">
       {/* Top Bar */}
-      <header className="flex items-center justify-between px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm sticky top-0 z-10 shrink-0">
+      <header className="flex items-center justify-between px-6 py-4 bg-background/60 backdrop-blur-xl border-b border-white/5 shadow-sm sticky top-0 z-10 shrink-0">
         <div className="flex items-center gap-3">
           <img
             src="/vgta-icon.svg"
             alt="VGTA"
-            className="h-10 w-10 rounded-xl ring-1 ring-slate-200 dark:ring-slate-800 shadow-lg"
+            className="h-10 w-10 rounded-xl shadow-lg glow-primary"
           />
           <div>
-            <h1 className="font-bold text-lg leading-tight tracking-tight">VGTA</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Client Portal</p>
+            <h1 className="font-black text-lg leading-tight tracking-tight text-gradient uppercase">VGTA</h1>
+            <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] opacity-80">Client Portal</p>
           </div>
         </div>
         
         <div className="flex items-center gap-4">
            <div className="text-right hidden sm:block">
-              <div className="text-sm font-semibold">{client.name}</div>
-              <div className="text-xs text-slate-500">{client.email}</div>
+              <div className="text-sm font-bold">{client.name}</div>
+              <div className="text-xs text-muted-foreground">{client.email}</div>
            </div>
-           <Button variant="ghost" size="sm" onClick={onLogout} className="text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
+           <Button variant="ghost" size="sm" onClick={onLogout} className="text-muted-foreground hover:text-red-500 hover:bg-red-500/10">
              <LogOut className="w-4 h-4 mr-2" />
              <span className="hidden sm:inline">Sign Out</span>
            </Button>
@@ -70,13 +111,13 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
 
       <div className="flex flex-1 overflow-hidden relative">
         {/* Sidebar Navigation (Desktop) */}
-        <aside className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 hidden md:flex flex-col p-4 gap-2">
+        <aside className="w-64 bg-card/30 backdrop-blur-sm border-r border-white/5 hidden md:flex flex-col p-4 gap-2">
             <div className="pb-4">
-               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">Menu</h3>
+               <h3 className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2 px-3">Menu</h3>
                <nav className="space-y-1">
                   <Button 
                     variant={activeTab === 'overview' && !selectedPlayerId ? 'secondary' : 'ghost'} 
-                    className="w-full justify-start" 
+                    className="w-full justify-start font-bold" 
                     onClick={() => { setActiveTab('overview'); setSelectedPlayerId(null); }}
                   >
                      <Activity className="w-4 h-4 mr-2 opacity-70" />
@@ -84,7 +125,7 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                   </Button>
                   <Button 
                     variant={activeTab === 'schedule' ? 'secondary' : 'ghost'} 
-                    className="w-full justify-start" 
+                    className="w-full justify-start font-bold" 
                     onClick={() => { setActiveTab('schedule'); setSelectedPlayerId(null); }}
                   >
                      <Calendar className="w-4 h-4 mr-2 opacity-70" />
@@ -92,7 +133,7 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                   </Button>
                   <Button 
                     variant={activeTab === 'financials' ? 'secondary' : 'ghost'} 
-                    className="w-full justify-start" 
+                    className="w-full justify-start font-bold" 
                     onClick={() => { setActiveTab('financials'); setSelectedPlayerId(null); }}
                   >
                      <CreditCard className="w-4 h-4 mr-2 opacity-70" />
@@ -102,16 +143,16 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
             </div>
 
             <div className="pb-4 flex-1">
-               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">Athletes</h3>
+               <h3 className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2 px-3">Athletes</h3>
                <div className="space-y-1">
                   {myPlayers.map(p => (
                      <Button 
                         key={p.id}
                         variant={selectedPlayerId === p.id ? 'secondary' : 'ghost'} 
-                        className="w-full justify-start group"
+                        className="w-full justify-start group font-bold"
                         onClick={() => handlePlayerClick(p.id)}
                      >
-                        <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xs font-bold mr-2 group-hover:bg-indigo-200 dark:group-hover:bg-indigo-800 transition-colors">
+                        <div className="w-6 h-6 rounded-full border border-white/10 flex items-center justify-center text-xs font-bold mr-2 text-white shadow-sm" style={{ backgroundColor: p.avatarColor }}>
                            {p.name.charAt(0)}
                         </div>
                         <span className="truncate">{p.name}</span>
@@ -121,33 +162,33 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                </div>
             </div>
             
-            <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl">
-               <p className="text-xs text-indigo-800 dark:text-indigo-200 font-medium mb-1">Need to reschedule?</p>
-               <p className="text-[10px] text-indigo-600 dark:text-indigo-400 leading-relaxed">
+            <div className="p-4 bg-primary/5 border border-primary/10 rounded-xl">
+               <p className="text-xs text-primary font-bold mb-1">Need to reschedule?</p>
+               <p className="text-[10px] text-muted-foreground leading-relaxed">
                   Please contact the academy office at least 24 hours in advance.
                </p>
             </div>
         </aside>
 
         {/* Main View Area */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950 p-4 md:p-8 pb-24 md:pb-8 no-scrollbar">
+        <main className="flex-1 overflow-y-auto bg-transparent p-4 md:p-8 pb-24 md:pb-8 no-scrollbar">
            {selectedPlayer ? (
               // PLAYER DETAIL VIEW
-              <div className="max-w-4xl mx-auto space-y-6">
+              <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                  <div className="flex items-center gap-4 mb-6">
                     <Button variant="outline" size="sm" onClick={() => setSelectedPlayerId(null)} className="md:hidden">
                        Back
                     </Button>
-                    <div className="w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg">
+                    <div className="w-16 h-16 rounded-full border-2 border-white/20 flex items-center justify-center text-white text-2xl font-bold shadow-xl" style={{ backgroundColor: selectedPlayer.avatarColor }}>
                        {selectedPlayer.name.charAt(0)}
                     </div>
                     <div>
-                       <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{selectedPlayer.name}</h2>
-                       <div className="flex gap-2 text-sm text-slate-500">
-                          <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium text-xs">
+                       <h2 className="text-3xl font-black text-white tracking-tight">{selectedPlayer.name}</h2>
+                       <div className="flex gap-2 text-sm text-muted-foreground">
+                          <span className="px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground font-bold text-[10px] uppercase tracking-wider border border-white/5">
                              {selectedPlayer.level}
                           </span>
-                          <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium text-xs">
+                          <span className="px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground font-bold text-[10px] uppercase tracking-wider border border-white/5">
                              {selectedPlayer.playStyle || 'All-Court'}
                           </span>
                        </div>
@@ -156,9 +197,9 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Stats Card */}
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
-                       <h3 className="font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
-                          <Activity className="w-4 h-4 text-indigo-500" />
+                    <div className="glass-card rounded-2xl p-6 border-white/5">
+                       <h3 className="font-black text-muted-foreground uppercase tracking-widest text-xs mb-4 flex items-center gap-2">
+                          <Activity className="w-4 h-4 text-primary" />
                           Performance Analysis
                        </h3>
                        <div className="h-64 flex items-center justify-center">
@@ -167,36 +208,36 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                     </div>
 
                     {/* Recent Logs Card */}
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col">
-                       <h3 className="font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
-                          <Trophy className="w-4 h-4 text-amber-500" />
+                    <div className="glass-card rounded-2xl p-6 border-white/5 flex flex-col">
+                       <h3 className="font-black text-muted-foreground uppercase tracking-widest text-xs mb-4 flex items-center gap-2">
+                          <Trophy className="w-4 h-4 text-yellow-500" />
                           Recent Sessions
                        </h3>
                        <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-2 max-h-64">
                           {playerLogs.length > 0 ? playerLogs.map(log => (
-                             <div key={log.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                             <div key={log.id} className="p-3 rounded-xl bg-card/50 border border-white/5 hover:bg-card/80 transition-colors">
                                 <div className="flex justify-between items-center mb-1">
-                                   <span className="text-xs font-bold text-slate-500">{log.date}</span>
-                                   <span className="text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full">
+                                   <span className="text-xs font-bold text-muted-foreground">{log.date}</span>
+                                   <span className="text-xs font-bold bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">
                                       {log.totalScore}/10
                                    </span>
                                 </div>
                                 {log.nextFocus && (
-                                   <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                                      <span className="font-semibold text-indigo-500">Focus:</span> {log.nextFocus}
+                                   <p className="text-xs text-muted-foreground mt-1">
+                                      <span className="font-bold text-primary">Focus:</span> {log.nextFocus}
                                    </p>
                                 )}
                              </div>
                           )) : (
-                             <div className="text-center py-10 text-sm text-slate-400">No sessions logged yet.</div>
+                             <div className="text-center py-10 text-sm text-muted-foreground italic">No sessions logged yet.</div>
                           )}
                        </div>
                     </div>
                  </div>
 
                  {/* Progress Chart */}
-                 <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
-                    <h3 className="font-bold text-slate-700 dark:text-slate-200 mb-4">Progress History</h3>
+                 <div className="glass-card rounded-2xl p-6 border-white/5">
+                    <h3 className="font-black text-muted-foreground uppercase tracking-widest text-xs mb-4">Progress History</h3>
                     <div className="h-64 w-full">
                        <ProgressChart data={playerLogs.map(l => ({ ...l, total: l.totalScore }))} />
                     </div>
@@ -204,16 +245,16 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
 
                  {/* Homework / Assigned Drills */}
                  {selectedPlayer.assignedDrills.length > 0 && (
-                     <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
-                        <h3 className="font-bold text-slate-700 dark:text-slate-200 mb-4">Assigned Homework</h3>
+                     <div className="glass-card rounded-2xl p-6 border-white/5">
+                        <h3 className="font-black text-muted-foreground uppercase tracking-widest text-xs mb-4">Assigned Homework</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                            {selectedPlayer.assignedDrills.map(did => {
                               const drill = drills.find(d => d.id === did);
                               if (!drill) return null;
                               return (
-                                 <div key={did} className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30">
+                                 <div key={did} className="p-4 rounded-xl border border-white/10 bg-card/30 hover:bg-card/50 transition-colors">
                                     <div className="font-bold text-sm mb-1">{drill.name}</div>
-                                    <div className="text-xs text-slate-500 line-clamp-2">{drill.description}</div>
+                                    <div className="text-xs text-muted-foreground line-clamp-2">{drill.description}</div>
                                  </div>
                               );
                            })}
@@ -224,8 +265,8 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
 
            ) : activeTab === 'schedule' ? (
               // SCHEDULE VIEW
-              <div className="max-w-3xl mx-auto space-y-6">
-                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">Upcoming Schedule</h2>
+              <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                 <h2 className="text-2xl font-black text-white uppercase tracking-tight mb-6">Upcoming Schedule</h2>
                  <div className="space-y-4">
                     {upcomingSessions.length > 0 ? upcomingSessions.map(session => {
                        const participantNames = session.participantIds
@@ -234,28 +275,28 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                           .join(", ");
                        
                        return (
-                          <div key={session.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-5 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
-                             <div className="flex-shrink-0 w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 flex flex-col items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/10">
-                                <span className="text-xs font-bold uppercase">{new Date(session.date).toLocaleString('default', { month: 'short' })}</span>
-                                <span className="text-2xl font-bold">{new Date(session.date).getDate()}</span>
+                          <div key={session.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-5 glass-card rounded-2xl border-white/5 hover:border-primary/30 transition-colors">
+                             <div className="flex-shrink-0 w-16 h-16 rounded-2xl bg-card border border-white/10 flex flex-col items-center justify-center text-primary shadow-lg">
+                                <span className="text-[10px] font-black uppercase tracking-widest">{new Date(session.date).toLocaleString('default', { month: 'short' })}</span>
+                                <span className="text-2xl font-black">{new Date(session.date).getDate()}</span>
                              </div>
                              <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1">
                                    <span className={cn(
-                                      "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
-                                      session.type === 'Private' ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" :
-                                      session.type === 'Group' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" :
-                                      "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300"
+                                      "px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border",
+                                      session.type === 'Private' ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
+                                      session.type === 'Group' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                                      "bg-orange-500/10 text-orange-400 border-orange-500/20"
                                    )}>
                                       {session.type}
                                    </span>
-                                   <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                                   <span className="text-xs text-muted-foreground font-bold font-mono flex items-center gap-1">
                                       <Clock className="w-3 h-3" />
                                       {session.startTime} - {session.endTime}
                                    </span>
                                 </div>
-                                <h3 className="font-bold text-slate-900 dark:text-slate-100">{participantNames}</h3>
-                                <div className="text-sm text-slate-500 flex items-center gap-1 mt-1">
+                                <h3 className="font-bold text-lg">{participantNames}</h3>
+                                <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                                    <MapPin className="w-3 h-3" />
                                    {session.location}
                                 </div>
@@ -263,9 +304,9 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                           </div>
                        );
                     }) : (
-                       <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-300 dark:border-slate-700">
-                          <Calendar className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                          <p className="text-slate-500 font-medium">No upcoming sessions scheduled.</p>
+                       <div className="text-center py-20 glass-card rounded-3xl border-dashed border-white/10">
+                          <Calendar className="w-10 h-10 text-muted-foreground/50 mx-auto mb-3" />
+                          <p className="text-muted-foreground font-bold">No upcoming sessions scheduled.</p>
                        </div>
                     )}
                  </div>
@@ -273,32 +314,97 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
 
            ) : activeTab === 'financials' ? (
               // FINANCIALS VIEW
-              <div className="max-w-3xl mx-auto space-y-6">
-                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">Payment History</h2>
+              <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                 <div className="flex items-center justify-between">
+                     <h2 className="text-2xl font-black text-white uppercase tracking-tight">Financial Statement</h2>
+                     <div className="flex items-center bg-card border border-white/10 rounded-lg p-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}>
+                           <ChevronLeft className="w-4 h-4" />
+                        </Button>
+                        <div className="px-4 font-bold text-sm min-w-[120px] text-center">
+                           {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                        </div>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}>
+                           <ChevronRight className="w-4 h-4" />
+                        </Button>
+                     </div>
+                 </div>
+
+                 {/* Summary Cards */}
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                     <div className="glass-card p-4 rounded-xl border-white/5">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Brought Forward</div>
+                        <div className={cn("text-lg font-black font-mono", openingBalance !== 0 ? "text-foreground" : "text-muted-foreground")}>R {openingBalance.toLocaleString()}</div>
+                     </div>
+                     <div className="glass-card p-4 rounded-xl border-white/5">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Fees (This Month)</div>
+                        <div className="text-lg font-black font-mono">R {currentFees.toLocaleString()}</div>
+                     </div>
+                     <div className="glass-card p-4 rounded-xl border-white/5">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Paid</div>
+                        <div className="text-lg font-black font-mono text-emerald-400">R {currentPaymentTotal.toLocaleString()}</div>
+                     </div>
+                     <div className="glass-card p-4 rounded-xl border-white/5 bg-primary/5 border-primary/20">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Closing Balance</div>
+                        <div className={cn("text-lg font-black font-mono", closingBalance > 0 ? "text-red-400" : "text-foreground")}>R {closingBalance.toLocaleString()}</div>
+                     </div>
+                 </div>
                  
-                 <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-                    <div className="grid grid-cols-4 gap-4 p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                       <div>Date</div>
-                       <div>Reference</div>
-                       <div>Amount</div>
-                       <div>Status</div>
+                 <div className="glass-card rounded-2xl border-white/5 overflow-hidden">
+                    <div className="p-4 border-b border-white/5 bg-card/30 flex justify-between items-center">
+                        <h3 className="font-bold text-sm">Transaction History</h3>
+                        <Button variant="outline" size="sm" className="h-7 text-xs gap-2">
+                           <Download className="w-3 h-3" /> PDF
+                        </Button>
                     </div>
-                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                       {client.payments && client.payments.length > 0 ? (
-                          [...client.payments].sort((a,b) => b.date.localeCompare(a.date)).map(payment => (
-                             <div key={payment.id} className="grid grid-cols-4 gap-4 p-4 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                <div className="font-medium text-slate-700 dark:text-slate-300">{payment.date}</div>
-                                <div className="text-slate-500">{payment.reference || 'Payment'}</div>
-                                <div className="font-bold text-slate-900 dark:text-slate-100">R {payment.amount}</div>
-                                <div>
-                                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                                      Paid
-                                   </span>
-                                </div>
-                             </div>
-                          ))
+                    <div className="divide-y divide-white/5">
+                       {/* Merge Sessions and Payments for list view */}
+                       {[
+                           ...monthlySessions.map(s => ({ 
+                               type: 'session', 
+                               date: s.date, 
+                               desc: `${s.type} Session`, 
+                               amount: (s.price || 0) * s.participantIds.filter(pid => clientPlayerIds.has(pid)).length,
+                               isCredit: false 
+                           })),
+                           ...monthlyPayments.map(p => ({ 
+                               type: 'payment', 
+                               date: p.date, 
+                               desc: `Payment (${p.reference || 'Ref'})`, 
+                               amount: p.amount,
+                               isCredit: true 
+                           }))
+                       ].sort((a,b) => a.date.localeCompare(b.date)).length > 0 ? (
+                           [
+                              ...monthlySessions.map(s => ({ 
+                                  id: s.id,
+                                  type: 'session', 
+                                  date: s.date, 
+                                  desc: `${s.type} Session`, 
+                                  amount: (s.price || 0) * s.participantIds.filter(pid => clientPlayerIds.has(pid)).length,
+                                  isCredit: false 
+                              })),
+                              ...monthlyPayments.map(p => ({ 
+                                  id: p.id,
+                                  type: 'payment', 
+                                  date: p.date, 
+                                  desc: `Payment - ${p.reference || 'Ref'}`, 
+                                  amount: p.amount,
+                                  isCredit: true 
+                              }))
+                           ]
+                           .sort((a,b) => a.date.localeCompare(b.date))
+                           .map((item, idx) => (
+                              <div key={idx} className="grid grid-cols-[100px_1fr_100px] gap-4 p-4 text-sm hover:bg-white/5 transition-colors items-center">
+                                 <div className="font-mono text-xs text-muted-foreground">{item.date}</div>
+                                 <div className="font-medium text-foreground">{item.desc}</div>
+                                 <div className={cn("font-bold font-mono text-right", item.isCredit ? "text-emerald-400" : "text-foreground")}>
+                                    {item.isCredit ? '-' : ''} R {item.amount}
+                                 </div>
+                              </div>
+                           ))
                        ) : (
-                          <div className="p-8 text-center text-slate-500 text-sm">No payment history available.</div>
+                          <div className="p-8 text-center text-muted-foreground text-sm italic">No transactions for this period.</div>
                        )}
                     </div>
                  </div>
@@ -306,30 +412,30 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
 
            ) : (
               // OVERVIEW (Dashboard Home)
-              <div className="max-w-5xl mx-auto">
-                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">Welcome, {client.name.split(' ')[0]}</h2>
+              <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                 <h2 className="text-2xl font-black text-white uppercase tracking-tight mb-6">Welcome, {client.name.split(' ')[0]}</h2>
                  
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                     {/* Next Session Card */}
-                    <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-3xl p-6 text-white shadow-xl shadow-indigo-200 dark:shadow-none relative overflow-hidden">
-                       <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-8 -mt-8" />
+                    <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl p-6 text-white shadow-2xl relative overflow-hidden group">
+                       <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/20 transition-colors duration-700" />
                        <div className="relative z-10">
-                          <h3 className="font-medium text-indigo-100 mb-1 flex items-center gap-2">
+                          <h3 className="font-bold text-indigo-200 mb-1 flex items-center gap-2 uppercase tracking-wider text-xs">
                              <Calendar className="w-4 h-4" /> Next Session
                           </h3>
                           {upcomingSessions[0] ? (
                              <>
-                                <div className="text-3xl font-bold mt-2 mb-1">
+                                <div className="text-4xl font-black mt-2 mb-1">
                                    {new Date(upcomingSessions[0].date).toLocaleDateString('en-US', { weekday: 'long' })}
                                 </div>
-                                <div className="text-lg text-indigo-100 mb-6">
+                                <div className="text-lg text-indigo-100 mb-6 font-medium">
                                    {upcomingSessions[0].startTime} @ {upcomingSessions[0].location}
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                    {upcomingSessions[0].participantIds.map(pid => {
                                       const p = players.find(x => x.id === pid);
                                       return p ? (
-                                         <span key={pid} className="px-3 py-1 rounded-full bg-white/20 text-sm font-medium backdrop-blur-sm">
+                                         <span key={pid} className="px-3 py-1 rounded-full bg-white/20 text-xs font-bold backdrop-blur-md border border-white/10">
                                             {p.name}
                                          </span>
                                       ) : null;
@@ -337,46 +443,46 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                                 </div>
                              </>
                           ) : (
-                             <div className="py-8 text-indigo-100">No upcoming sessions.</div>
+                             <div className="py-8 text-indigo-100 italic">No upcoming sessions.</div>
                           )}
                        </div>
                     </div>
 
                     {/* Quick Stats / Summary */}
                     <div className="grid grid-cols-2 gap-4">
-                       <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-center">
-                          <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-600 mb-3">
+                       <div className="glass-card p-5 rounded-2xl border-white/5 flex flex-col justify-center hover:bg-card/40 transition-colors">
+                          <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-500 mb-3">
                              <User className="w-5 h-5" />
                           </div>
-                          <div className="text-2xl font-bold text-slate-900 dark:text-white">{myPlayers.length}</div>
-                          <div className="text-xs text-slate-500 font-medium uppercase tracking-wide">Athletes</div>
+                          <div className="text-3xl font-black">{myPlayers.length}</div>
+                          <div className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Athletes</div>
                        </div>
-                       <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-center">
-                          <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 mb-3">
+                       <div className="glass-card p-5 rounded-2xl border-white/5 flex flex-col justify-center hover:bg-card/40 transition-colors">
+                          <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-500 mb-3">
                              <Activity className="w-5 h-5" />
                           </div>
-                          <div className="text-2xl font-bold text-slate-900 dark:text-white">{sessions.length}</div>
-                          <div className="text-xs text-slate-500 font-medium uppercase tracking-wide">Total Sessions</div>
+                          <div className="text-3xl font-black">{sessions.length}</div>
+                          <div className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Total Sessions</div>
                        </div>
-                       <div className="col-span-2 bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
-                          <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Your Athletes</h3>
+                       <div className="col-span-2 glass-card p-5 rounded-2xl border-white/5">
+                          <h3 className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-3">Your Athletes</h3>
                           <div className="space-y-2">
                              {myPlayers.map(p => (
                                 <div 
                                    key={p.id} 
                                    onClick={() => handlePlayerClick(p.id)}
-                                   className="flex items-center justify-between p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition-colors group"
+                                   className="flex items-center justify-between p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
                                 >
                                    <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300">
+                                      <div className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-xs font-bold text-white shadow-sm" style={{ backgroundColor: p.avatarColor }}>
                                          {p.name.charAt(0)}
                                       </div>
                                       <div>
-                                         <div className="text-sm font-bold text-slate-900 dark:text-white">{p.name}</div>
-                                         <div className="text-[10px] text-slate-500">{p.level}</div>
+                                         <div className="text-sm font-bold">{p.name}</div>
+                                         <div className="text-[10px] text-muted-foreground">{p.level}</div>
                                       </div>
                                    </div>
-                                   <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500" />
+                                   <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                                 </div>
                              ))}
                           </div>
@@ -386,7 +492,7 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
 
                  {/* Recent Activity Feed */}
                  <div className="mb-8">
-                     <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Recent Activity</h3>
+                     <h3 className="text-lg font-black text-white uppercase tracking-tight mb-4">Recent Activity</h3>
                      <div className="space-y-3">
                         {myPlayers.flatMap(p => 
                            logs
@@ -396,16 +502,16 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                         .sort((a,b) => b.createdAt - a.createdAt)
                         .slice(0, 5)
                         .map(log => (
-                           <div key={log.id} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 font-bold text-xs">
+                           <div key={log.id} className="glass-card p-4 rounded-xl border-white/5 flex items-center gap-4 hover:border-primary/20 transition-colors">
+                              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-xs border border-primary/20">
                                  {log.totalScore}
                               </div>
                               <div className="flex-1">
                                  <div className="flex justify-between">
-                                    <span className="font-bold text-sm text-slate-900 dark:text-white">{log.playerName}</span>
-                                    <span className="text-xs text-slate-500">{log.date}</span>
+                                    <span className="font-bold text-sm">{log.playerName}</span>
+                                    <span className="text-xs text-muted-foreground font-mono">{log.date}</span>
                                  </div>
-                                 <p className="text-xs text-slate-500 line-clamp-1">{log.note || "Session completed successfully."}</p>
+                                 <p className="text-xs text-muted-foreground line-clamp-1">{log.note || "Session completed successfully."}</p>
                               </div>
                            </div>
                         ))}
@@ -416,30 +522,30 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
         </main>
 
         {/* Mobile Bottom Navigation */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-2 z-50 flex justify-around items-center safe-area-bottom">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-xl border-t border-white/10 p-2 z-50 flex justify-around items-center safe-area-bottom">
            <Button 
               variant="ghost" 
               onClick={() => { setActiveTab('overview'); setSelectedPlayerId(null); }}
-              className={cn("flex flex-col items-center gap-1 h-auto py-2", activeTab === 'overview' && !selectedPlayerId ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500")}
+              className={cn("flex flex-col items-center gap-1 h-auto py-2", activeTab === 'overview' && !selectedPlayerId ? "text-primary" : "text-muted-foreground")}
            >
               <Activity className="w-5 h-5" />
-              <span className="text-[10px] font-medium">Overview</span>
+              <span className="text-[10px] font-bold">Overview</span>
            </Button>
            <Button 
               variant="ghost" 
               onClick={() => { setActiveTab('schedule'); setSelectedPlayerId(null); }}
-              className={cn("flex flex-col items-center gap-1 h-auto py-2", activeTab === 'schedule' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500")}
+              className={cn("flex flex-col items-center gap-1 h-auto py-2", activeTab === 'schedule' ? "text-primary" : "text-muted-foreground")}
            >
               <Calendar className="w-5 h-5" />
-              <span className="text-[10px] font-medium">Schedule</span>
+              <span className="text-[10px] font-bold">Schedule</span>
            </Button>
            <Button 
               variant="ghost" 
               onClick={() => { setActiveTab('financials'); setSelectedPlayerId(null); }}
-              className={cn("flex flex-col items-center gap-1 h-auto py-2", activeTab === 'financials' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500")}
+              className={cn("flex flex-col items-center gap-1 h-auto py-2", activeTab === 'financials' ? "text-primary" : "text-muted-foreground")}
            >
               <CreditCard className="w-5 h-5" />
-              <span className="text-[10px] font-medium">Money</span>
+              <span className="text-[10px] font-bold">Money</span>
            </Button>
         </nav>
       </div>

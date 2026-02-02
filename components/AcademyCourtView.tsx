@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import type { Player } from '@/lib/playbook';
+import type { Player, TrainingSession } from '@/lib/playbook';
 
 interface AcademyCourtViewProps {
   players: Player[];
+  sessions: TrainingSession[];
   onSelectPlayer: (id: string) => void;
   onUpdatePlayerPos: (id: string, pos: { x: number; y: number }) => void;
 }
@@ -17,7 +18,7 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-export function AcademyCourtView({ players, onSelectPlayer, onUpdatePlayerPos }: AcademyCourtViewProps) {
+export function AcademyCourtView({ players, sessions = [], onSelectPlayer, onUpdatePlayerPos }: AcademyCourtViewProps) {
   const [hoveredPlayerId, setHoveredPlayerId] = React.useState<string | null>(null);
   const [draggingPlayerId, setDraggingPlayerId] = React.useState<string | null>(null);
   const svgRef = React.useRef<SVGSVGElement | null>(null);
@@ -380,7 +381,7 @@ export function AcademyCourtView({ players, onSelectPlayer, onUpdatePlayerPos }:
                         {p.assignedDrills.length} Drills
                      </div>
                      <div className="flex-1 px-2 py-1.5 rounded-lg bg-white/5 border border-white/5 text-[9px] font-bold text-muted-foreground uppercase tracking-tighter text-center">
-                        {p.attendance?.length || 0} Sessions
+                        {sessions.filter(s => s.participantIds.includes(p.id)).length} Sessions
                      </div>
                   </div>
                </div>

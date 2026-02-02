@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn, nanoid } from '@/lib/utils';
-import type { Player, PlayerStats, Drill, Client } from '@/lib/playbook';
+import type { Player, PlayerStats, Drill, Client, TrainingSession } from '@/lib/playbook';
 import { RadarChart } from '@/components/RadarChart';
 import { AcademyCourtView } from '@/components/AcademyCourtView';
 import { ClientEditPanel } from '@/components/ClientEditPanel';
@@ -12,6 +12,7 @@ interface LockerRoomProps {
   players: Player[];
   drills: Drill[];
   clients?: Client[];
+  sessions?: TrainingSession[];
   onUpdatePlayer: (player: Player) => void;
   onAddPlayer: (player: Player) => void;
   onUpsertClient?: (client: Client) => void;
@@ -44,7 +45,7 @@ const AVATAR_COLORS = [
 
 const getRandomColor = () => AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 
-export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAddPlayer, onUpsertClient, onDeletePlayer, onDeleteClient, onMergeClients, onAssignDrill, onUnassignDrill, initialSelectedPlayerId }: LockerRoomProps) {
+export function LockerRoom({ players, drills, clients = [], sessions = [], onUpdatePlayer, onAddPlayer, onUpsertClient, onDeletePlayer, onDeleteClient, onMergeClients, onAssignDrill, onUnassignDrill, initialSelectedPlayerId }: LockerRoomProps) {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const listPanelRef = useRef<HTMLDivElement | null>(null);
@@ -382,6 +383,7 @@ export function LockerRoom({ players, drills, clients = [], onUpdatePlayer, onAd
         ) : (
            <AcademyCourtView 
               players={players} 
+              sessions={sessions}
               onSelectPlayer={(id) => setSelectedPlayerId(id)} 
               onUpdatePlayerPos={handleUpdatePlayerPos}
            />

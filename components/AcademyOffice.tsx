@@ -7,11 +7,13 @@ import {
   Check, X, Phone, Search, Calendar as CalendarIcon, Users,
   Activity, Plus, Clock, FileText, Briefcase, DollarSign,
   Trash2, ChevronLeft, ChevronRight, Edit2, SlidersHorizontal,
-  Share2, CreditCard, Repeat, Lock, LockOpen, CloudRain, Ban
+  Share2, CreditCard, Repeat, Lock, LockOpen, CloudRain, Ban, Printer
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InsightsDashboard } from './InsightsDashboard';
 import { ClientEditPanel } from '@/components/ClientEditPanel';
+import { SessionEditPanel } from '@/components/SessionEditPanel';
+import { AccountsStatement } from '@/components/AccountsStatement';
 
 interface AcademyOfficeProps {
   players: Player[];
@@ -106,13 +108,14 @@ export function AcademyOffice({
             <AccountsWorkspace
                clients={clients}
                players={players}
+               sessions={sessions}
                onUpsertClient={onUpsertClient}
                onDeleteClient={onDeleteClient}
                onMergeClients={onMergeClients}
             />
          </div>
          <div className={cn("h-full w-full", activeTab !== 'bookings' && "hidden")}>
-            <BookingsWorkspace clients={clients} players={players} sessions={sessions} />
+            <AccountsStatement clients={clients} players={players} sessions={sessions} />
          </div>
       </div>
     </div>
@@ -179,18 +182,7 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
       return map;
    }, [events]);
 
-   const handleMarkDay = (type: DayEventType) => {
-      const dateStr = getLocalISODate(currentDate);
-      const existing = dayEvents.find((e: DayEvent) => e.date === dateStr);
-      if (existing && existing.type === type) deleteDayEvent(existing.id);
-      else upsertDayEvent({ 
-         id: existing?.id || nanoid(), 
-         date: dateStr, 
-         type, 
-         createdAt: existing?.createdAt || Date.now(),
-         updatedAt: Date.now()
-      });
-   };
+
 
    const handleRemovePlayerFromSession = (sessionId: string, playerId: string) => {
       const session = sessions.find(s => s.id === sessionId);
@@ -213,88 +205,187 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
       e.preventDefault();
       e.stopPropagation();
       const startY = e.clientY;
-      const startH = parseInt(session.endTime.split(':')[0]);
-      const startM = parseInt(session.endTime.split(':')[1]);
-      const startTotalM = startH * 60 + startM;
+      const [endH, endM] = session.endTime.split(':').map(Number);
+      const startTotalEndM = endH * 60 + endM;
       
+      // Mutable state to track changes for final commit
+      let currentEndTime = session.endTime;
+      let currentPrice = session.price;
+
       const onMove = (ev: PointerEvent) => {
          const dy = ev.clientY - startY;
-         // Approximate pixel-to-minute ratio (20px = 30min -> 1px = 1.5min)
-         // Adjust sensitivity as needed based on rowHeight
-         const minutesDelta = Math.round((dy / 40) * 30 / 15) * 15; 
+         // 24px = 15 minutes (96px/h)
+         const minutesDelta = Math.round(dy / 24) * 15; 
          
-         let newTotalM = startTotalM + minutesDelta;
+         let newTotalM = startTotalEndM + minutesDelta;
          
          // Enforce constraints (min 15m duration from start time)
          const [sH, sM] = session.startTime.split(':').map(Number);
          const sTotal = sH * 60 + sM;
          if (newTotalM < sTotal + 15) newTotalM = sTotal + 15;
-         if (newTotalM > sTotal + 120) newTotalM = sTotal + 120; // Max 2h
+         if (newTotalM > sTotal + 300) newTotalM = sTotal + 300; // Max 5h
 
-         const endH = Math.floor(newTotalM / 60);
-         const endM = newTotalM % 60;
-         const newEndTime = `${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`;
+         const newEndH = Math.floor(newTotalM / 60);
+         const newEndM = newTotalM % 60;
+         currentEndTime = `${String(newEndH).padStart(2,'0')}:${String(newEndM).padStart(2,'0')}`;
          
          // Recalculate Price
          const durationMins = newTotalM - sTotal;
          const baseRate = SESSION_PRICING[session.type] || 0;
-         const newPrice = Math.round((durationMins / 60) * baseRate);
+         currentPrice = Math.round((durationMins / 60) * baseRate);
 
          // Optimistic update
-         onUpsertSession({ ...session, endTime: newEndTime, price: newPrice });
+         onUpsertSession({ ...session, endTime: currentEndTime, price: currentPrice });
       };
 
       const onUp = () => {
          window.removeEventListener('pointermove', onMove);
          window.removeEventListener('pointerup', onUp);
-         // Final commit (already updated via optimistic, but ensures persistence)
-         onUpsertSession({ ...session, updatedAt: Date.now() });
+         // Commit the final values tracked in the closure
+         onUpsertSession({ ...session, endTime: currentEndTime, price: currentPrice, updatedAt: Date.now() });
       };
 
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
    };
 
+   const generateRecurringDates = (startDateStr: string, mode: RepeatMode = repeatMode) => {
+      const dates = [startDateStr];
+      if (mode === 'None') return dates;
+
+      const start = new Date(startDateStr);
+      const currentMonth = start.getMonth();
+      let nextDate = new Date(start);
+      nextDate.setDate(nextDate.getDate() + 7);
+
+      const term = SA_TERMS_2026.find(t => {
+         const s = new Date(t.start);
+         const e = new Date(t.end);
+         return start >= s && start <= e;
+      });
+
+      while (true) {
+         if (mode === 'Month' && nextDate.getMonth() !== currentMonth) break;
+         if (mode === 'Term') {
+            if (!term || nextDate > new Date(term.end)) break;
+         }
+         
+         dates.push(getLocalISODate(nextDate));
+         nextDate.setDate(nextDate.getDate() + 7);
+      }
+      return dates;
+   };
+
+   const handleRepeatSession = (session: TrainingSession, mode: RepeatMode) => {
+      const dates = generateRecurringDates(session.date, mode);
+      // Skip first date as it is the current session
+      const futureDates = dates.slice(1);
+      
+      const seriesId = session.seriesId || nanoid();
+      if (!session.seriesId) {
+         onUpsertSession({ ...session, seriesId, updatedAt: Date.now() });
+      }
+
+      futureDates.forEach(d => {
+         onUpsertSession({
+            ...session,
+            id: nanoid(),
+            date: d,
+            seriesId,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+         });
+      });
+      
+      alert(`Created ${futureDates.length} recurring sessions.`);
+   };
+
+
    const handleDrop = (e: React.DragEvent, date: Date, time: string) => {
       e.preventDefault();
       const dateStr = getLocalISODate(date);
       const transferId = e.dataTransfer.getData('text/plain');
       const session = sessions.find(s => s.id === transferId || s.id === draggedSessionId);
+      
       if (session) {
+         // Move existing session (No recursion)
          onUpsertSession({ ...session, date: dateStr, startTime: time, updatedAt: Date.now() });
          setDraggedSessionId(null);
          return;
       }
+      
       const player = players.find(p => p.id === transferId || p.id === draggedPlayerId);
       if (player) {
          const targetKey = `${dateStr}::${time}::${selectedLocation}`;
          const existing = sessionMap.get(targetKey)?.[0];
+         
          if (existing) {
+            // Add to existing (No recursion)
             if (!existing.participantIds.includes(player.id)) {
                onUpsertSession({ ...existing, participantIds: [...existing.participantIds, player.id], updatedAt: Date.now() });
             }
          } else {
-            // Default 60 min duration (1 hour)
+            // Create New (With Recursion)
             const [h, m] = time.split(':').map(Number);
             const endM = m + 60;
             const endH = h + Math.floor(endM / 60);
             const endTime = `${String(endH).padStart(2,'0')}:${String(endM % 60).padStart(2,'0')}`;
             
-            onUpsertSession({ id: nanoid(), date: dateStr, startTime: time, endTime, location: selectedLocation, type: selectedSessionType, price: SESSION_PRICING[selectedSessionType], maxCapacity: SESSION_LIMITS[selectedSessionType], participantIds: [player.id], createdAt: Date.now(), updatedAt: Date.now() });
+            const dates = generateRecurringDates(dateStr);
+            const seriesId = dates.length > 1 ? nanoid() : undefined;
+
+            dates.forEach(d => {
+               onUpsertSession({ 
+                  id: nanoid(), 
+                  date: d, 
+                  startTime: time, 
+                  endTime, 
+                  location: selectedLocation, 
+                  type: selectedSessionType, 
+                  price: SESSION_PRICING[selectedSessionType], 
+                  maxCapacity: SESSION_LIMITS[selectedSessionType], 
+                  participantIds: [player.id], 
+                  seriesId,
+                  createdAt: Date.now(), 
+                  updatedAt: Date.now() 
+               });
+            });
          }
       }
       setDraggedPlayerId(null);
    };
 
-   const generateCalendarDays = (date: Date) => {
-      const y = date.getFullYear(), m = date.getMonth();
-      const first = new Date(y, m, 1), last = new Date(y, m + 1, 0);
-      const days = [];
-      const startPadding = first.getDay() === 0 ? 6 : first.getDay() - 1;
-      for (let i = 0; i < startPadding; i++) days.push({ day: new Date(y, m, 1 - (startPadding - i)).getDate(), inMonth: false, date: new Date(y, m, 1 - (startPadding - i)) });
-      for (let i = 1; i <= last.getDate(); i++) days.push({ day: i, inMonth: true, date: new Date(y, m, i), isToday: new Date(y, m, i).toDateString() === new Date().toDateString() });
-      while (days.length % 7 !== 0) days.push({ day: new Date(y, m, days.length - startPadding + 1).getDate(), inMonth: false, date: new Date(y, m, days.length - startPadding + 1) });
-      return days;
+   const handleCellClick = (date: Date, time: string) => {
+      const dateStr = getLocalISODate(date);
+      const [h, m] = time.split(':').map(Number);
+      const endM = m + 60;
+      const endH = h + Math.floor(endM / 60);
+      const endTime = `${String(endH).padStart(2,'0')}:${String(endM % 60).padStart(2,'0')}`;
+      
+      const dates = generateRecurringDates(dateStr);
+      const seriesId = dates.length > 1 ? nanoid() : undefined;
+      let firstSession = null;
+
+      dates.forEach((d, i) => {
+         const newSession: TrainingSession = { 
+            id: nanoid(), 
+            date: d, 
+            startTime: time, 
+            endTime, 
+            location: selectedLocation, 
+            type: selectedSessionType, 
+            price: SESSION_PRICING[selectedSessionType], 
+            maxCapacity: SESSION_LIMITS[selectedSessionType], 
+            participantIds: [], 
+            seriesId,
+            createdAt: Date.now(), 
+            updatedAt: Date.now() 
+         };
+         onUpsertSession(newSession);
+         if (i === 0) firstSession = newSession;
+      });
+      
+      if (firstSession) setEditingSession(firstSession);
    };
 
    return (
@@ -317,16 +408,18 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
                </div>
             </div>
 
+
+
             <div className="space-y-3">
-               <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Day Marker</label>
-               <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" size="sm" onClick={() => handleMarkDay('Rain')} className={cn("h-8 text-[10px] font-black uppercase tracking-widest gap-2", dayEvents.some((e:any) => e.date === getLocalISODate(currentDate) && e.type === 'Rain') && "bg-blue-500/20 border-blue-500 text-blue-400")}>
-                     <CloudRain className="w-3 h-3" /> Rain
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleMarkDay('Coach Cancelled')} className={cn("h-8 text-[10px] font-black uppercase tracking-widest gap-2", dayEvents.some((e:any) => e.date === getLocalISODate(currentDate) && e.type === 'Coach Cancelled') && "bg-red-500/20 border-red-500 text-red-400")}>
-                     <Ban className="w-3 h-3" /> Cancel
-                  </Button>
-               </div>
+               <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Repeat Mode</label>
+               <Select value={repeatMode} onValueChange={(v: RepeatMode) => setRepeatMode(v)}>
+                  <SelectTrigger className="h-8 text-xs bg-card border-border"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                     <SelectItem value="None">No Repeat</SelectItem>
+                     <SelectItem value="Month">This Month</SelectItem>
+                     <SelectItem value="Term">This Term</SelectItem>
+                  </SelectContent>
+               </Select>
             </div>
 
             <Button variant="destructive" className="w-full text-[10px] font-black uppercase tracking-widest" onClick={handleClearSchedule}><Trash2 className="w-3 h-3 mr-2" /> Clear Schedule</Button>
@@ -359,18 +452,44 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
             </div>
 
             <div className="flex-1 overflow-auto bg-card/5 relative">
-               {viewMode === 'week' && <WeekView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} weekDays={getWeekDays(currentDate)} onDrop={handleDrop} onEdit={setEditingSession} onRemovePlayer={handleRemovePlayerFromSession} onDragSession={setDraggedSessionId} onResizeStart={handleResizeStart} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
+               {viewMode === 'week' && <WeekView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} weekDays={getWeekDays(currentDate)} onDrop={handleDrop} onEdit={setEditingSession} onRemovePlayer={handleRemovePlayerFromSession} onDragSession={setDraggedSessionId} onResizeStart={handleResizeStart} onCellClick={handleCellClick} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
                {viewMode === 'month' && <MonthView currentDate={currentDate} events={events} dayEvents={dayEvents} location={selectedLocation} onEdit={setEditingSession} />}
-               {viewMode === 'day' && <DayView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} onDrop={handleDrop} onEdit={setEditingSession} onRemovePlayer={handleRemovePlayerFromSession} onResizeStart={handleResizeStart} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
+               {viewMode === 'day' && <DayView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} onDrop={handleDrop} onEdit={setEditingSession} onRemovePlayer={handleRemovePlayerFromSession} onResizeStart={handleResizeStart} onCellClick={handleCellClick} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
             </div>
          </div>
+
+         {editingSession && (
+            <SessionEditPanel
+               session={editingSession}
+               players={players}
+               isOpen={true}
+               onClose={() => setEditingSession(null)}
+               onRepeat={(mode: RepeatMode) => handleRepeatSession(editingSession, mode)}
+               onSave={(updated) => {
+                  onUpsertSession(updated);
+                  setEditingSession(null);
+               }}
+               onDelete={(id) => {
+                  onDeleteSession(id);
+                  setEditingSession(null);
+               }}
+            />
+         )}
       </div>
    );
 }
 
-function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemovePlayer, onDragSession, onResizeStart, location, startHour, endHour }: any) {
-   const currentHour = new Date().getHours(), currentMinute = new Date().getMinutes();
-   const blocks = useMemo(() => generateSmartBlocks(startHour, endHour, sessionMap, weekDays, location), [startHour, endHour, sessionMap, weekDays, location]);
+function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemovePlayer, onDragSession, onResizeStart, onCellClick, location, startHour, endHour }: any) {
+   // Use FIXED 1-hour blocks for the grid background
+   const blocks = useMemo(() => {
+      const b = [];
+      for(let h = startHour; h < endHour; h++) {
+         const hh = String(h).padStart(2, '0');
+         const time = `${hh}:00`; 
+         b.push({ time, rowHeight: 'h-24' }); // 96px per hour
+      }
+      return b;
+   }, [startHour, endHour]);
 
    return (
       <div className="min-w-[640px] h-full flex flex-col relative">
@@ -388,36 +507,78 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
                );
             })}
          </div>
-         <div className="flex-1 overflow-y-auto">
-            {blocks.map((block: any) => block.type === 'active' && (
-               <div key={block.time} className={cn("grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 relative", block.rowHeight)}>
-                  <div className="border-r border-border/50 flex justify-center pt-2 bg-card/10 text-xs font-mono text-muted-foreground">{block.time}</div>
-                  {weekDays.map((day: Date, i: number) => {
-                     const dateStr = getLocalISODate(day), sessions = sessionMap.get(`${dateStr}::${block.time}::${location}`) || [];
-                     return (
-                        <div key={i} className="border-r border-border/50 p-1 flex flex-col gap-1" onDragOver={e => e.preventDefault()} onDrop={e => handleDrop(e, day, block.time)}>
-                           {sessions.map((s: any) => {
-                              // Calculate height based on duration
-                              const [startH, startM] = s.startTime.split(':').map(Number);
-                              const [endH, endM] = s.endTime.split(':').map(Number);
-                              const durationMins = (endH * 60 + endM) - (startH * 60 + startM);
-                              // 20px = 30min slot -> height = (duration / 30) * 20
-                              // Subtracting a bit for gaps/padding
-                              const heightPx = Math.max(20, (durationMins / 30) * 80); 
+         <div className="flex-1 overflow-y-auto relative">
+            {/* Background Grid */}
+            <div className="absolute inset-0 grid grid-cols-[4rem_repeat(7,1fr)] pointer-events-none z-0">
+               <div className="border-r border-border/50 bg-card/5" />
+               {weekDays.map((_:any, i:number) => (
+                  <div key={i} className="border-r border-border/50" />
+               ))}
+            </div>
+            
+            {/* Time Rows */}
+            {blocks.map((block: any) => (
+               <div key={block.time} className={cn("grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 relative z-0", block.rowHeight)}>
+                  <div className="border-r border-border/50 flex justify-center items-start pt-2 bg-card/10 text-[10px] font-mono text-muted-foreground">{block.time}</div>
+                  {weekDays.map((day: Date, i: number) => (
+                     <div 
+                        key={i} 
+                        className="border-r border-border/50 relative group/cell" 
+                        onDragOver={e => e.preventDefault()} 
+                        onDrop={e => onDrop(e, day, block.time)}
+                     >
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity pointer-events-none">
+                           <button 
+                              onClick={() => onCellClick(day, block.time)}
+                              className="bg-primary text-primary-foreground rounded-full p-1 shadow-lg hover:scale-110 transition-transform pointer-events-auto"
+                           >
+                              <Plus className="w-4 h-4" />
+                           </button>
+                        </div>
+                     </div>
+                  ))}
+               </div>
+            ))}
 
-                              return (
+            {/* Absolute Sessions Layer */}
+            <div className="absolute inset-0 pointer-events-none grid grid-cols-[4rem_repeat(7,1fr)] z-10">
+               <div /> {/* Time column padding */}
+               {weekDays.map((day: Date, dayIdx: number) => {
+                  const dateStr = getLocalISODate(day);
+                  const daySessions = Array.from(sessionMap.entries())
+                     .filter(([key]) => key.startsWith(`${dateStr}::`))
+                     .flatMap(([, s]) => s)
+                     .filter((s, idx, self) => self.findIndex(x => x.id === s.id) === idx);
+
+                  return (
+                     <div key={dayIdx} className="relative h-full pointer-events-none">
+                        {daySessions.map((s: any) => {
+                           const [startH, startM] = s.startTime.split(':').map(Number);
+                           const [endH, endM] = s.endTime.split(':').map(Number);
+                           
+                           const startOffsetMins = (startH * 60 + startM) - (startHour * 60);
+                           const durationMins = (endH * 60 + endM) - (startH * 60 + startM);
+                           
+                           // 96px per hour -> 1.6px per minute
+                           const top = (startOffsetMins / 60) * 96; 
+                           const height = (durationMins / 60) * 96;
+
+                           return (
                               <div 
                                  key={s.id} 
                                  draggable 
                                  onDragStart={(e) => { e.dataTransfer.setData('text/plain', s.id); onDragSession(s.id); }} 
-                                 className="w-full bg-card/50 border border-border rounded-lg p-2 shadow-sm cursor-grab relative group overflow-hidden"
-                                 style={{ height: `${heightPx}px`, minHeight: '40px', zIndex: 10 }}
+                                 className="absolute left-1 right-1 bg-card border border-primary/20 rounded-lg p-2 shadow-sm pointer-events-auto cursor-grab group flex flex-col overflow-hidden hover:z-50 hover:shadow-lg transition-shadow"
+                                 style={{ top: `${top}px`, height: `${height}px` }}
                               >
-                                 <div className="flex justify-between items-start mb-1">
-                                    <span className="text-[8px] font-bold uppercase text-muted-foreground">{s.type}</span>
-                                    <button onClick={() => onEdit(s)} className="text-[10px] hover:text-primary"><Edit2 className="w-2.5 h-3"/></button>
+                                 <div className="flex flex-row justify-between items-center mb-1 shrink-0 gap-1">
+                                    <div className="flex items-baseline gap-1 min-w-0 overflow-hidden">
+                                       <span className="text-[9px] font-bold uppercase text-primary/70 truncate shrink-0">{s.type}</span>
+                                       <span className="text-[8px] font-mono text-muted-foreground truncate">{s.startTime}-{s.endTime}</span>
+                                    </div>
+                                    <button onClick={(e) => { e.stopPropagation(); onEdit(s); }} className="text-[10px] hover:text-primary shrink-0"><Edit2 className="w-2.5 h-3"/></button>
                                  </div>
-                                 <div className="space-y-0.5 overflow-y-auto custom-scrollbar flex-1 pb-2">
+                                 <div className="mt-1 space-y-0.5 overflow-y-auto custom-scrollbar flex-1 pb-3 pointer-events-none">
                                     {s.participants.map((p: any) => (
                                        <div key={p.id} className="flex items-center justify-between group/p text-[9px] leading-tight">
                                           <div className="flex items-center gap-1 min-w-0">
@@ -426,31 +587,33 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
                                           </div>
                                           <button 
                                              onClick={(e) => { e.stopPropagation(); onRemovePlayer(s.id, p.id); }}
-                                             className="text-red-500 opacity-0 group-hover/p:opacity-100 shrink-0"
+                                             className="text-red-500 opacity-0 group-hover/p:opacity-100 shrink-0 pointer-events-auto"
                                           >
                                              <X className="w-2.5 h-2.5" />
                                           </button>
                                        </div>
                                     ))}
                                  </div>
-                                 {/* Resize Handle */}
+                                 {/* Resize Handle Overlay */}
                                  <div 
-                                    className="absolute bottom-0 left-0 right-0 h-2 cursor-s-resize hover:bg-primary/20 flex justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="absolute bottom-0 left-0 right-0 h-3 cursor-s-resize flex justify-center items-end pointer-events-auto hover:bg-primary/10 transition-colors"
                                     onPointerDown={(e) => onResizeStart(e, s)}
+                                    onClick={(e) => e.stopPropagation()}
                                  >
-                                    <div className="w-8 h-1 rounded-full bg-border" />
+                                    <div className="w-8 h-1 rounded-full bg-border group-hover:bg-primary/50 mb-1" />
                                  </div>
                               </div>
-                           )})}
-                        </div>
-                     );
-                  })}
-               </div>
-            ))}
+                           );
+                        })}
+                     </div>
+                  );
+               })}
+            </div>
          </div>
       </div>
    );
 }
+
 
 function MonthView({ currentDate, events, dayEvents = [], location, onEdit }: any) {
    const days = generateCalendarDays(currentDate); 
@@ -482,89 +645,110 @@ function MonthView({ currentDate, events, dayEvents = [], location, onEdit }: an
    );
 }
 
-function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, location, onEdit, onResizeStart }: any) {
+function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, onEdit, onRemovePlayer, onResizeStart, onCellClick, location, startHour, endHour }: any) {
    const dateStr = getLocalISODate(currentDate), dayEvent = dayEvents.find((e: any) => e.date === dateStr);
-   const blocks = generateSmartBlocks(8, 20, sessionMap, [currentDate], location);
+   
+   // Use FIXED 1-hour blocks for the grid background
+   const blocks = useMemo(() => {
+      const b = [];
+      for(let h = startHour; h < endHour; h++) {
+         const hh = String(h).padStart(2, '0');
+         const time = `${hh}:00`; 
+         b.push({ time, rowHeight: 'h-24' }); // 96px per hour
+      }
+      return b;
+   }, [startHour, endHour]);
+   
+   const daySessions = Array.from(sessionMap.entries())
+      .filter(([key]) => key.startsWith(`${dateStr}::`))
+      .flatMap(([, s]) => s)
+      .filter((s, idx, self) => self.findIndex(x => x.id === s.id) === idx);
+
    return (
       <div className="max-w-3xl mx-auto h-full p-4 relative">
          {dayEvent && <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"><div className={cn("backdrop-blur-[1px] border p-6 rounded-2xl transform rotate-12 shadow-2xl", dayEvent.type === 'Rain' ? "bg-blue-500/10 border-blue-500/50" : "bg-red-500/10 border-red-500/50")}><h2 className={cn("text-4xl font-black uppercase tracking-tighter flex items-center gap-4", dayEvent.type === 'Rain' ? "text-blue-500" : "text-red-500")}>{dayEvent.type === 'Rain' ? <><CloudRain className="w-10 h-10" /> Rain Out</> : <><Ban className="w-10 h-10" /> Cancelled</>}</h2></div></div>}
-         <div className="border border-border rounded-xl bg-card/20 overflow-hidden">
-            {blocks.map((block: any) => block.type === 'active' && (
-               <div key={block.time} className={cn("flex border-b border-border/50", block.rowHeight)} onDragOver={e => e.preventDefault()} onDrop={e => onDrop(e, currentDate, block.time)}>
-                  <div className="w-20 shrink-0 border-r border-border/50 bg-secondary/20 flex items-center justify-center font-mono font-bold text-muted-foreground">{block.time}</div>
-                  <div className="flex-1 p-2 flex flex-col gap-2">
-                     {(sessionMap.get(`${dateStr}::${block.time}::${location}`) || []).map((s: any) => {
-                        const [startH, startM] = s.startTime.split(':').map(Number);
-                        const [endH, endM] = s.endTime.split(':').map(Number);
-                        const durationMins = (endH * 60 + endM) - (startH * 60 + startM);
-                        // 20px = 30min -> height = (duration / 30) * 20
-                        const heightPx = Math.max(20, (durationMins / 30) * 80); 
-
-                        return (
-                        <div 
-                           key={s.id} 
-                           onClick={() => onEdit(s)} 
-                           className="flex-1 bg-card border border-border rounded-lg p-3 shadow-sm cursor-pointer relative group overflow-hidden"
-                           style={{ height: `${heightPx}px`, minHeight: '60px', zIndex: 10 }}
+         <div className="border border-border rounded-xl bg-card/20 overflow-hidden relative">
+            {blocks.map((block: any) => (
+               <div 
+                  key={block.time} 
+                  className={cn("flex border-b border-border/50", block.rowHeight, "relative group/cell")} 
+                  onDragOver={e => e.preventDefault()} 
+                  onDrop={e => onDrop(e, currentDate, block.time)}
+               >
+                  <div className="w-20 shrink-0 border-r border-border/50 bg-secondary/20 flex items-center justify-center font-mono font-bold text-muted-foreground text-xs">{block.time}</div>
+                  <div className="flex-1 relative">
+                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity pointer-events-none">
+                        <button 
+                           onClick={() => onCellClick(currentDate, block.time)}
+                           className="bg-primary text-primary-foreground rounded-full p-1 shadow-lg hover:scale-110 transition-transform pointer-events-auto"
                         >
-                           <div className="flex justify-between mb-2">
-                              <div className="font-bold text-sm">{s.type} Session</div>
-                              <div className="text-xs text-muted-foreground">{s.participantIds.length} Players</div>
-                           </div>
-                           <div className="text-[10px] text-muted-foreground opacity-70">
-                              {s.startTime} - {s.endTime}
-                           </div>
-                           {/* Resize Handle */}
-                           <div 
-                              className="absolute bottom-0 left-0 right-0 h-3 cursor-s-resize hover:bg-primary/20 flex justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity"
-                              onPointerDown={(e) => onResizeStart(e, s)}
-                              onClick={(e) => e.stopPropagation()}
-                           >
-                              <div className="w-12 h-1 rounded-full bg-border" />
-                           </div>
-                        </div>
-                     )})}
+                           <Plus className="w-4 h-4" />
+                        </button>
+                     </div>
                   </div>
                </div>
             ))}
+
+            {/* Absolute Sessions Layer */}
+            <div className="absolute inset-0 pointer-events-none flex">
+               <div className="w-20 shrink-0" />
+               <div className="flex-1 relative">
+                  {daySessions.map((s: any) => {
+                     const [startH, startM] = s.startTime.split(':').map(Number);
+                     const [endH, endM] = s.endTime.split(':').map(Number);
+                     
+                     const startOffsetMins = (startH * 60 + startM) - (startHour * 60);
+                     const durationMins = (endH * 60 + endM) - (startH * 60 + startM);
+                     
+                     // 96px per hour -> 1.6px per minute
+                     const top = (startOffsetMins / 60) * 96; 
+                     const height = (durationMins / 60) * 96;
+
+                     return (
+                        <div 
+                           key={s.id} 
+                           className="absolute left-2 right-2 bg-card border border-primary/20 rounded-xl p-4 shadow-md pointer-events-auto cursor-pointer group flex flex-col hover:z-50 hover:shadow-xl transition-shadow"
+                           style={{ top: `${top}px`, height: `${height}px` }}
+                           onClick={(e) => { e.stopPropagation(); onEdit(s); }}
+                        >
+                           <div className="flex justify-between mb-2 shrink-0">
+                              <div className="flex flex-col">
+                                 <div className="font-bold text-sm text-primary">{s.type} Session</div>
+                                 <div className="text-[10px] font-mono text-muted-foreground">{s.startTime} - {s.endTime}</div>
+                              </div>
+                              <div className="text-xs bg-secondary px-2 py-1 rounded-full h-fit">{s.participantIds.length} Players</div>
+                           </div>
+                           
+                           <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-wrap gap-2 content-start pointer-events-none">
+                              {s.participants.map((p: any) => (
+                                 <div key={p.id} className="flex items-center gap-1.5 bg-background border border-border px-2 py-1 rounded-lg text-[10px] font-medium">
+                                    <div className="w-4 h-4 rounded-full flex items-center justify-center font-bold text-white shrink-0" style={{ backgroundColor: p.avatar }}>{p.name.substring(0,1)}</div>
+                                    <span>{p.name}</span>
+                                 </div>
+                              ))}
+                           </div>
+
+                           {/* Resize Handle */}
+                           <div 
+                              className="absolute bottom-0 left-0 right-0 h-4 cursor-s-resize flex justify-center items-end pb-1 pointer-events-auto hover:bg-primary/10 transition-colors"
+                              onPointerDown={(e) => { e.stopPropagation(); onResizeStart(e, s); }}
+                              onClick={(e) => e.stopPropagation()}
+                           >
+                              <div className="w-16 h-1 rounded-full bg-border group-hover:bg-primary/50" />
+                           </div>
+                        </div>
+                     );
+                  })}
+               </div>
+            </div>
          </div>
       </div>
    );
 }
 
-function generateSmartBlocks(startHour: number, endHour: number, sessionMap: any, days: Date[], location: string) {
-   const activeSlots = new Set<string>();
-   
-   // Default active slots (13:00 onwards)
-   for (let h = 13; h < endHour; h++) {
-      activeSlots.add(`${h}:00`);
-      activeSlots.add(`${h}:30`);
-   }
 
-   days.forEach(d => {
-      const dateStr = getLocalISODate(d);
-      for(let h = startHour; h < endHour; h++) {
-         const t1 = `${h}:00`;
-         const t2 = `${h}:30`;
-         // Loose check for sessions starting in this slot
-         if (sessionMap.get(`${dateStr}::${t1}::${location}`)?.length > 0) activeSlots.add(t1);
-         if (sessionMap.get(`${dateStr}::${t2}::${location}`)?.length > 0) activeSlots.add(t2);
-      }
-   });
 
-   const blocks: any[] = [];
-   for (let h = startHour; h < endHour; h++) {
-      const t1 = `${h}:00`;
-      const t2 = `${h}:30`;
-      
-      if (activeSlots.has(t1)) blocks.push({ type: 'active', time: t1, rowHeight: 'h-20' });
-      else blocks.push({ type: 'gap', time: t1 });
 
-      if (activeSlots.has(t2)) blocks.push({ type: 'active', time: t2, rowHeight: 'h-20' });
-      else blocks.push({ type: 'gap', time: t2 });
-   }
-   return blocks;
-}
 
 function generateCalendarDays(date: Date) {
    const y = date.getFullYear(), m = date.getMonth(), first = new Date(y, m, 1), last = new Date(y, m + 1, 0);
@@ -575,9 +759,10 @@ function generateCalendarDays(date: Date) {
    return days;
 }
 
-function AccountsWorkspace({ clients, players, onUpsertClient, onDeleteClient, onMergeClients }: {
+function AccountsWorkspace({ clients, players, sessions, onUpsertClient, onDeleteClient, onMergeClients }: {
    clients: Client[];
    players: Player[];
+   sessions: TrainingSession[];
    onUpsertClient: (client: Client) => void;
    onDeleteClient?: (clientId: string) => void;
    onMergeClients?: (sourceId: string, targetId: string) => void;
@@ -589,7 +774,12 @@ function AccountsWorkspace({ clients, players, onUpsertClient, onDeleteClient, o
    return (
       <div className="p-8 max-w-6xl mx-auto h-full overflow-y-auto">
          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-3xl font-black">Client Accounts</h2>
+            <div className="flex items-center gap-4">
+               <h2 className="text-3xl font-black">Client Accounts</h2>
+               <Button variant="outline" size="sm" className="gap-2" onClick={() => window.print()}>
+                  <Printer className="w-4 h-4" /> Print
+               </Button>
+            </div>
             <div className="relative">
                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                <Input className="pl-9 w-64 bg-card/50" placeholder="Search..." value={q} onChange={e => setQ(e.target.value)} />
@@ -616,6 +806,7 @@ function AccountsWorkspace({ clients, players, onUpsertClient, onDeleteClient, o
                client={editingClient}
                players={players}
                allClients={clients}
+               sessions={sessions}
                isOpen={true}
                onClose={() => setEditingClient(null)}
                onSave={(updated) => {
@@ -636,13 +827,3 @@ function AccountsWorkspace({ clients, players, onUpsertClient, onDeleteClient, o
    );
 }
 
-function BookingsWorkspace({ clients, players, sessions }: any) {
-   return (
-      <div className="flex h-full items-center justify-center opacity-30">
-         <div className="text-center">
-            <CreditCard className="w-16 h-16 mx-auto mb-4" />
-            <p className="text-xl font-black uppercase tracking-widest">Bookings Workspace</p>
-         </div>
-      </div>
-   );
-}
