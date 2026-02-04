@@ -260,7 +260,7 @@ function RevenueCard({ stats }: { stats: DashboardStats }) {
                <>
                   <h3 className="text-2xl font-black tracking-tight">R{stats.realizedRevenue.toLocaleString()}</h3>
                   <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1 flex items-center gap-1">
-                     <span className="text-emerald-400">+R{stats.projectedRevenue.toLocaleString()}</span> Projected
+                     <span className="text-emerald-400">+R{stats.projectedRevenue.toLocaleString()}</span> Projected (Month)
                   </div>
                </>
             )}

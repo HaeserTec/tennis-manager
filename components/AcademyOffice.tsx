@@ -8,7 +8,7 @@ import {
   Activity, Plus, Clock, FileText, Briefcase, DollarSign,
   Trash2, ChevronLeft, ChevronRight, Edit2, SlidersHorizontal,
   Share2, CreditCard, Repeat, Lock, LockOpen, CloudRain, Ban, Printer,
-  BookOpen
+  BookOpen, Sparkles
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InsightsDashboard } from './InsightsDashboard';
@@ -200,6 +200,40 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
       });
    };
 
+   const handleCleanDuplicates = () => {
+      const groups: Record<string, TrainingSession[]> = {};
+      sessions.forEach(s => {
+         const key = `${s.date}|${s.startTime}|${s.location}`;
+         if (!groups[key]) groups[key] = [];
+         groups[key].push(s);
+      });
+
+      let duplicatesToDelete: string[] = [];
+      Object.values(groups).forEach(group => {
+         if (group.length > 1) {
+            // Sort by participant count (keep the one with most players), then by update time
+            group.sort((a, b) => {
+               if (b.participantIds.length !== a.participantIds.length) return b.participantIds.length - a.participantIds.length;
+               return (b.updatedAt || 0) - (a.updatedAt || 0);
+            });
+            // Mark all but the first for deletion
+            for (let i = 1; i < group.length; i++) {
+               duplicatesToDelete.push(group[i].id);
+            }
+         }
+      });
+
+      if (duplicatesToDelete.length === 0) {
+         alert("No duplicate sessions found.");
+         return;
+      }
+
+      if (window.confirm(`Found ${duplicatesToDelete.length} duplicate sessions. Delete them?`)) {
+         duplicatesToDelete.forEach(id => onDeleteSession(id));
+         alert("Duplicates removed.");
+      }
+   };
+
    const handleClearSchedule = () => {
       if (sessions.length === 0) return;
       if (window.confirm("DELETE ALL SESSIONS? Type 'DELETE' to confirm.") && window.prompt("Type 'DELETE':") === 'DELETE') {
@@ -296,18 +330,33 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
          onUpsertSession({ ...session, seriesId, updatedAt: Date.now() });
       }
 
+      let createdCount = 0;
       futureDates.forEach(d => {
-         onUpsertSession({
-            ...session,
-            id: nanoid(),
-            date: d,
-            seriesId,
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-         });
+         // Check for existing session at the same time and location
+         const collision = sessions.find(s => 
+            s.date === d && 
+            s.startTime === session.startTime && 
+            s.location === session.location
+         );
+
+         if (!collision) {
+            onUpsertSession({
+               ...session,
+               id: nanoid(),
+               date: d,
+               seriesId,
+               createdAt: Date.now(),
+               updatedAt: Date.now()
+            });
+            createdCount++;
+         }
       });
       
-      alert(`Created ${futureDates.length} recurring sessions.`);
+      if (createdCount > 0) {
+         alert(`Created ${createdCount} new recurring sessions.`);
+      } else {
+         alert("No new sessions created (slots already filled).");
+      }
    };
 
 
@@ -438,6 +487,7 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
             </div>
 
             <Button variant="destructive" className="w-full text-[10px] font-black uppercase tracking-widest" onClick={handleClearSchedule}><Trash2 className="w-3 h-3 mr-2" /> Clear Schedule</Button>
+            <Button variant="outline" className="w-full text-[10px] font-black uppercase tracking-widest" onClick={handleCleanDuplicates}><Sparkles className="w-3 h-3 mr-2" /> Cleanup Duplicates</Button>
 
             <div className="flex-1 flex flex-col min-h-0">
                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Drag to Schedule</label>

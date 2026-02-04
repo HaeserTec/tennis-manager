@@ -246,18 +246,27 @@ export function calculateDashboardStats(players: Player[], sessions: TrainingSes
   // Get local YYYY-MM-DD for comparison
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60000;
-  const todayStr = new Date(now.getTime() - offset).toISOString().split('T')[0];
+  const localNow = new Date(now.getTime() - offset);
+  const todayStr = localNow.toISOString().split('T')[0];
+  
+  // Calculate End of Current Month (Local)
+  const endOfMonthDate = new Date(localNow.getFullYear(), localNow.getMonth() + 1, 0);
+  const endOfMonthStr = new Date(endOfMonthDate.getTime() - endOfMonthDate.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 
   sessions.forEach(s => {
-     const price = s.price || 0;
-     totalRevenue += price;
+     const rate = s.price || 0;
+     // Revenue is Rate x Participants. If no participants, we assume 0 revenue (or 1 potential?).
+     // Using strict billing logic: 0 participants = 0 revenue.
+     const sessionRevenue = rate * (s.participantIds.length || 0);
+
+     totalRevenue += sessionRevenue;
      
-     // Split Realized (Past) vs Projected (Today/Future)
+     // Split Realized (Past) vs Projected (Today/Future THIS MONTH)
      if (s.date < todayStr) {
-        realizedRevenue += price;
+        realizedRevenue += sessionRevenue;
         
         // Breakdowns apply to Realized Revenue
-        revenueByType[s.type] = (revenueByType[s.type] || 0) + price;
+        revenueByType[s.type] = (revenueByType[s.type] || 0) + sessionRevenue;
 
         // Location Breakdown: Derived from Players (Intel)
         const participants = players.filter(p => s.participantIds.includes(p.id));
@@ -270,17 +279,18 @@ export function calculateDashboardStats(players: Player[], sessions: TrainingSes
 
         if (uniqueLocations.length > 0) {
            // Split revenue equally among the locations involved (usually just 1)
-           const splitPrice = price / uniqueLocations.length;
+           const splitRevenue = sessionRevenue / uniqueLocations.length;
            uniqueLocations.forEach(loc => {
-              revenueByLocation[loc] = (revenueByLocation[loc] || 0) + splitPrice;
+              revenueByLocation[loc] = (revenueByLocation[loc] || 0) + splitRevenue;
            });
         } else {
            // Fallback to session location if no player intel available
-           revenueByLocation[s.location] = (revenueByLocation[s.location] || 0) + price;
+           revenueByLocation[s.location] = (revenueByLocation[s.location] || 0) + sessionRevenue;
         }
 
-     } else {
-        projectedRevenue += price;
+     } else if (s.date <= endOfMonthStr) {
+        // Only count Projected if it falls within the current month
+        projectedRevenue += sessionRevenue;
      }
      
      sessionTypeCounts[s.type] = (sessionTypeCounts[s.type] || 0) + 1;
