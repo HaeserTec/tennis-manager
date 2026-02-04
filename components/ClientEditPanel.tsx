@@ -467,11 +467,13 @@ function PaymentEditor({ payments, onChange }: { payments: Payment[], onChange: 
 function PaymentForm({
   payment,
   onSave,
-  onCancel
+  onCancel,
+  key
 }: {
   payment?: Payment,
   onSave: (p: Payment) => void,
-  onCancel: () => void
+  onCancel: () => void,
+  key?: any
 }): React.ReactElement {
   const [date, setDate] = useState(payment?.date || new Date().toISOString().split('T')[0]);
   const [amount, setAmount] = useState(payment?.amount?.toString() || '');

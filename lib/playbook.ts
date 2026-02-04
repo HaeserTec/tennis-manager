@@ -255,6 +255,7 @@ export interface SessionLog {
   movement: number;
   coachability: number;
   
+  effort?: number; // 1-5 scale
   totalScore: number; // 0-10
 
   // Anchors
@@ -263,6 +264,7 @@ export interface SessionLog {
 
   note?: string;
   nextFocus?: string;
+  isSharedWithParent?: boolean;
   
   createdAt: number;
   updatedAt: number;
@@ -299,6 +301,10 @@ export interface ProgressSnapshot {
   focusArea?: string;
   notes?: string;
 }
+
+// ============================================
+// CURRICULUM & PATHWAY TYPES (REMOVED)
+// ============================================
 
 // ============================================
 // DRILL LIBRARY ORGANIZATION TYPES
@@ -338,6 +344,124 @@ export const DEFAULT_DRILL_CATEGORIES: DrillCategory[] = [
   { id: 'cat_overhead', name: 'Overhead', color: '#ef4444', icon: 'ArrowUp', isSystem: true },
   { id: 'cat_conditioning', name: 'Conditioning', color: '#06b6d4', icon: 'Zap', isSystem: true },
   { id: 'cat_game_based', name: 'Game-Based', color: '#84cc16', icon: 'Trophy', isSystem: true },
+];
+
+export const DEFAULT_DRILLS: Drill[] = [
+  // --- JUNIOR (RED/ORANGE) ---
+  {
+    id: 'drill_red_floor_tennis',
+    name: 'Floor Tennis',
+    session: 'Group',
+    format: 'Beginner',
+    intensity: 'Warm-Up',
+    description: 'Players roll the ball back and forth using their rackets as "walls" on the ground. Teaches tracking and ready position without the difficulty of the bounce.',
+    coachingPoints: 'Get low (knees bent). Racket strings facing target. Watch the ball all the way.',
+    categoryId: 'cat_warmup',
+    durationMins: 10
+  },
+  {
+    id: 'drill_red_balloon_taps',
+    name: 'Balloon Tap-Ups',
+    session: 'Group',
+    format: 'Beginner',
+    intensity: 'Warm-Up',
+    description: 'Keep a balloon in the air using only the racket face. Develops eye-hand coordination and grip stability.',
+    coachingPoints: 'Continental or Eastern grip. Small steps to get under the balloon.',
+    categoryId: 'cat_warmup',
+    durationMins: 5
+  },
+  {
+    id: 'drill_red_sandwich_catch',
+    name: 'Sandwich Catch',
+    session: 'Private',
+    format: 'Beginner',
+    intensity: 'Active',
+    description: 'Coach feeds a gentle ball. Player must "catch" it by sandwiching it between their racket and their non-dominant hand.',
+    coachingPoints: 'Meet the ball in front. Hands together at impact.',
+    categoryId: 'cat_groundstrokes',
+    durationMins: 10
+  },
+  {
+    id: 'drill_red_drop_hit',
+    name: 'Self Drop-Hit',
+    session: 'Group',
+    format: 'Beginner',
+    intensity: 'Active',
+    description: 'Player stands sideways, drops ball, and hits it over the net (or to a target). Fundamental start to rallying.',
+    coachingPoints: 'Drop arm straight. Swing low to high. Finish over the shoulder.',
+    categoryId: 'cat_groundstrokes',
+    durationMins: 15
+  },
+
+  // --- CLUB (ADULT INTERMEDIATE) ---
+  {
+    id: 'drill_club_deep_cross',
+    name: 'Deep Cross-Court Rally',
+    session: 'Semi',
+    format: 'Intermediate',
+    intensity: 'Active',
+    description: 'Players trade cross-court groundstrokes aiming for depth (past service line). Net height is safety.',
+    coachingPoints: 'Clear the net by 1-2 meters. Recover to the bisector after every shot.',
+    categoryId: 'cat_groundstrokes',
+    durationMins: 15
+  },
+  {
+    id: 'drill_club_approach_volley',
+    name: 'Approach & Volley 1-2',
+    session: 'Private',
+    format: 'Intermediate',
+    intensity: 'Active',
+    description: 'Coach feeds a short ball. Player hits an approach shot down the line and follows it in for a volley to the open court.',
+    coachingPoints: 'Split step at service line. Keep the volley compact (punch, don\'t swing).',
+    categoryId: 'cat_volley',
+    durationMins: 20
+  },
+  {
+    id: 'drill_club_alley_rally',
+    name: 'Alley Rally (Doubles)',
+    session: 'Semi',
+    format: 'Intermediate',
+    intensity: 'Warm-Up',
+    description: 'Two players in the doubles alley keeping the ball in play using the narrow space. Improves precision.',
+    coachingPoints: 'Small adjustments. Focus on control over power.',
+    categoryId: 'cat_groundstrokes',
+    durationMins: 10
+  },
+
+  // --- PERFORMANCE ---
+  {
+    id: 'drill_hp_serve_plus_one',
+    name: 'Serve + 1 Forehand',
+    session: 'Private',
+    format: 'Advanced',
+    intensity: 'Hard Work',
+    description: 'Player serves and immediately hunts for a forehand on the next ball, regardless of return placement.',
+    coachingPoints: 'Explosive recovery from serve. Footwork to get around the backhand. Aggressive target.',
+    categoryId: 'cat_serve',
+    durationMins: 20
+  },
+  {
+    id: 'drill_hp_2_on_1',
+    name: '2-on-1 Defense',
+    session: 'Group',
+    format: 'Advanced',
+    intensity: 'Hard Work',
+    description: 'One player defends the singles court against two volleyers. Goal is to neutralize and lob.',
+    coachingPoints: 'Use height and depth. Don\'t panic. Make them play the extra ball.',
+    categoryId: 'cat_game_based',
+    durationMins: 15
+  },
+  {
+    id: 'drill_hp_inside_out',
+    name: 'Inside-Out Endurance',
+    session: 'Private',
+    format: 'Advanced',
+    intensity: 'Hard Work',
+    description: 'Feeding drill: Player hits only inside-out forehands from the backhand corner to the ad court corner. 20 ball sets.',
+    coachingPoints: 'Load the outside leg. spacing is critical. maintain racket head speed.',
+    categoryId: 'cat_groundstrokes',
+    durationMins: 15
+  }
 ];
 
 // ============================================

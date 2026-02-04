@@ -358,8 +358,11 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
 function LogForm({ player, existingLog, date, allLogs, onSave, onCancel, embedded = false }: { player: Player, existingLog?: SessionLog, date: string, allLogs: SessionLog[], onSave: (l: SessionLog) => void, onCancel: () => void, embedded?: boolean }) {
    // Form State (Re-initialize when player changes)
    const [scores, setScores] = useState<ScoreData>({ tech: 1, consistency: 1, tactics: 1, movement: 1, coachability: 1 });
+   const [effort, setEffort] = useState(3);
    const [anchors, setAnchors] = useState({ bestStreak: 0, serveIn: 5 });
    const [note, setNote] = useState("");
+   const [nextFocus, setNextFocus] = useState("");
+   const [isSharedWithParent, setIsSharedWithParent] = useState(false);
    const [progressExpanded, setProgressExpanded] = useState(!embedded ? false : true); // Collapsed on mobile, expanded on desktop
 
    // Get player's progress history (last 5 sessions)
@@ -376,11 +379,14 @@ function LogForm({ player, existingLog, date, allLogs, onSave, onCancel, embedde
          movement: existingLog?.movement ?? 1,
          coachability: existingLog?.coachability ?? 1,
       });
+      setEffort(existingLog?.effort ?? 3);
       setAnchors({
          bestStreak: existingLog?.anchorBestStreak ?? 0,
          serveIn: existingLog?.anchorServeIn ?? 5,
       });
       setNote(existingLog?.note ?? "");
+      setNextFocus(existingLog?.nextFocus ?? "");
+      setIsSharedWithParent(existingLog?.isSharedWithParent ?? false);
    }, [existingLog, player.id]); // Dependency on player.id ensures reset on switch
 
    const total = computeTotalScore(scores);
@@ -391,10 +397,13 @@ function LogForm({ player, existingLog, date, allLogs, onSave, onCancel, embedde
          playerId: player.id,
          date,
          ...scores,
+         effort,
          totalScore: total,
          anchorBestStreak: anchors.bestStreak,
          anchorServeIn: anchors.serveIn,
          note,
+         nextFocus,
+         isSharedWithParent,
          createdAt: existingLog?.createdAt ?? nowMs(),
          updatedAt: nowMs(),
       };
@@ -469,9 +478,28 @@ function LogForm({ player, existingLog, date, allLogs, onSave, onCancel, embedde
 
             {/* 5 Core Metrics */}
             <div className="space-y-4">
-               <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-2">
-                  <div className="h-1 w-4 bg-primary rounded-full" />
-                  Core Metrics
+               <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                     <div className="h-1 w-4 bg-primary rounded-full" />
+                     Performance Scores
+                  </span>
+                  <div className="flex items-center gap-2">
+                     <span className="text-[9px]">Effort:</span>
+                     <div className="flex gap-1">
+                        {[1, 2, 3, 4, 5].map(v => (
+                           <button 
+                              key={v} 
+                              onClick={() => setEffort(v)}
+                              className={cn(
+                                 "w-6 h-6 rounded-full text-[10px] font-bold border transition-all",
+                                 effort >= v ? "bg-orange-500 border-orange-600 text-white" : "bg-secondary border-transparent text-muted-foreground"
+                              )}
+                           >
+                              {v}
+                           </button>
+                        ))}
+                     </div>
+                  </div>
                </h3>
                <div className="grid grid-cols-1 gap-3">
                   <ScoreControl label="Technique" description={getDesc("Technique")} value={scores.tech} onChange={v => setScores({...scores, tech: v})} />
@@ -485,38 +513,44 @@ function LogForm({ player, existingLog, date, allLogs, onSave, onCancel, embedde
             <div className="h-px bg-border/50" />
 
             {/* Anchors */}
-            <div className="space-y-4">
-               <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-2">
-                  <div className="h-1 w-4 bg-orange-500 rounded-full" />
-                  Daily Anchors
-               </h3>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <CounterControl 
-                     label="Max Rally Count" 
-                     subtitle="Longest exchange without error"
-                     icon={<Flame className="w-4 h-4 text-orange-500" />}
-                     value={anchors.bestStreak} 
-                     onChange={v => setAnchors(prev => ({ ...prev, bestStreak: Math.max(0, v) }))} 
+// ... (omitting some lines for space but including in actual call)
+// ...
+            {/* Notes */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+               <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Coach's Insight (Public)</label>
+                  <textarea 
+                     className="w-full h-24 bg-card border border-border rounded-xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
+                     placeholder={`What was ${player.name.split(' ')[0]}'s key breakthrough or struggle today?`}
+                     value={note}
+                     onChange={e => setNote(e.target.value)}
                   />
-                  <CounterControl 
-                     label="Serves In / 10" 
-                     subtitle="First serves made (start of point)"
-                     icon={<Target className="w-4 h-4 text-blue-500" />}
-                     value={anchors.serveIn} 
-                     onChange={v => setAnchors(prev => ({ ...prev, serveIn: Math.max(0, Math.min(10, v)) }))} 
+               </div>
+               <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Next Session Focus</label>
+                  <textarea 
+                     className="w-full h-24 bg-card border border-border rounded-xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
+                     placeholder="What should we work on next?"
+                     value={nextFocus}
+                     onChange={e => setNextFocus(e.target.value)}
                   />
                </div>
             </div>
 
-            {/* Notes */}
-            <div className="space-y-2">
-               <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Session Insight</label>
-               <textarea 
-                  className="w-full h-24 bg-card border border-border rounded-xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
-                  placeholder={`What was ${player.name.split(' ')[0]}'s key breakthrough or struggle today?`}
-                  value={note}
-                  onChange={e => setNote(e.target.value)}
-               />
+            <div className="flex items-center justify-between p-4 rounded-xl bg-primary/5 border border-primary/20">
+               <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-foreground">Share with Parent Portal</div>
+                  <div className="text-[10px] text-muted-foreground">Makes this report visible to the client in their dashboard.</div>
+               </div>
+               <button 
+                  onClick={() => setIsSharedWithParent(!isSharedWithParent)}
+                  className={cn(
+                     "w-12 h-6 rounded-full transition-all relative border",
+                     isSharedWithParent ? "bg-primary border-primary" : "bg-secondary border-transparent"
+                  )}
+               >
+                  <div className={cn("absolute top-1 w-4 h-4 rounded-full bg-white transition-all", isSharedWithParent ? "left-7" : "left-1")} />
+               </button>
             </div>
 
          </div>

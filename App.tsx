@@ -123,6 +123,7 @@ export default function App() {
      locations, setLocations,
      logs, upsertLog, uploadFile,
      terms,
+     dayEvents, upsertDayEvent, deleteDayEvent,
      forceSync,
      importData
   } = useData();
@@ -1227,12 +1228,15 @@ export default function App() {
                 locations={locations}
                 clients={clients}
                 sessions={sessions}
+                dayEvents={dayEvents}
                 onUpdatePlayer={updatePlayer}
                 onUpsertClient={upsertClient}
                 onDeleteClient={deleteClient}
                 onMergeClients={mergeClients}
                 onUpsertSession={upsertSession}
                 onDeleteSession={deleteSession}
+                upsertDayEvent={upsertDayEvent}
+                deleteDayEvent={deleteDayEvent}
                 onUploadFile={uploadFile}
                 onClose={handleGoHome}
              />

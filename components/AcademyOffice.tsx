@@ -7,7 +7,8 @@ import {
   Check, X, Phone, Search, Calendar as CalendarIcon, Users,
   Activity, Plus, Clock, FileText, Briefcase, DollarSign,
   Trash2, ChevronLeft, ChevronRight, Edit2, SlidersHorizontal,
-  Share2, CreditCard, Repeat, Lock, LockOpen, CloudRain, Ban, Printer
+  Share2, CreditCard, Repeat, Lock, LockOpen, CloudRain, Ban, Printer,
+  BookOpen
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InsightsDashboard } from './InsightsDashboard';
@@ -29,10 +30,11 @@ interface AcademyOfficeProps {
   onDeleteSession: (sessionId: string) => void;
   upsertDayEvent: (event: DayEvent) => void;
   deleteDayEvent: (id: string) => void;
+  onUploadFile?: (bucket: string, file: File) => Promise<string | null>;
   onClose: () => void;
 }
 
-type Tab = 'insights' | 'scheduler' | 'accounts' | 'bookings';
+type Tab = 'insights' | 'scheduler' | 'accounts' | 'bookings' | 'payments';
 type RepeatMode = 'None' | 'Month' | 'Term' | 'Year';
 
 const SESSION_PRICING = { Private: 350, Semi: 250, Group: 200 };
@@ -86,6 +88,7 @@ export function AcademyOffice({
            <NavTab id="scheduler" label="Scheduler" icon={<CalendarIcon className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
            <NavTab id="accounts" label="Accounts" icon={<Users className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
            <NavTab id="bookings" label="Bookings" icon={<Clock className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
+           <NavTab id="payments" label="Ledger" icon={<DollarSign className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
         </nav>
         
         <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-red-500/10 hover:text-red-500 shrink-0">
@@ -116,6 +119,9 @@ export function AcademyOffice({
          </div>
          <div className={cn("h-full w-full", activeTab !== 'bookings' && "hidden")}>
             <AccountsStatement clients={clients} players={players} sessions={sessions} />
+         </div>
+         <div className={cn("h-full w-full", activeTab !== 'payments' && "hidden")}>
+            <PaymentLedger clients={clients} onUpsertClient={onUpsertClient} />
          </div>
       </div>
     </div>
@@ -204,13 +210,17 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
    const handleResizeStart = (e: React.PointerEvent, session: TrainingSession) => {
       e.preventDefault();
       e.stopPropagation();
+      
+      // Find clean session from source of truth to avoid polluting state with derived view props
+      const cleanSession = sessions.find(s => s.id === session.id) || session;
+      
       const startY = e.clientY;
-      const [endH, endM] = session.endTime.split(':').map(Number);
+      const [endH, endM] = cleanSession.endTime.split(':').map(Number);
       const startTotalEndM = endH * 60 + endM;
       
       // Mutable state to track changes for final commit
-      let currentEndTime = session.endTime;
-      let currentPrice = session.price;
+      let currentEndTime = cleanSession.endTime;
+      let currentPrice = cleanSession.price;
 
       const onMove = (ev: PointerEvent) => {
          const dy = ev.clientY - startY;
@@ -220,7 +230,7 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
          let newTotalM = startTotalEndM + minutesDelta;
          
          // Enforce constraints (min 15m duration from start time)
-         const [sH, sM] = session.startTime.split(':').map(Number);
+         const [sH, sM] = cleanSession.startTime.split(':').map(Number);
          const sTotal = sH * 60 + sM;
          if (newTotalM < sTotal + 15) newTotalM = sTotal + 15;
          if (newTotalM > sTotal + 300) newTotalM = sTotal + 300; // Max 5h
@@ -231,18 +241,18 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
          
          // Recalculate Price
          const durationMins = newTotalM - sTotal;
-         const baseRate = SESSION_PRICING[session.type] || 0;
+         const baseRate = SESSION_PRICING[cleanSession.type] || 0;
          currentPrice = Math.round((durationMins / 60) * baseRate);
 
          // Optimistic update
-         onUpsertSession({ ...session, endTime: currentEndTime, price: currentPrice });
+         onUpsertSession({ ...cleanSession, endTime: currentEndTime, price: currentPrice });
       };
 
       const onUp = () => {
          window.removeEventListener('pointermove', onMove);
          window.removeEventListener('pointerup', onUp);
          // Commit the final values tracked in the closure
-         onUpsertSession({ ...session, endTime: currentEndTime, price: currentPrice, updatedAt: Date.now() });
+         onUpsertSession({ ...cleanSession, endTime: currentEndTime, price: currentPrice, updatedAt: Date.now() });
       };
 
       window.addEventListener('pointermove', onMove);
@@ -388,6 +398,11 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
       if (firstSession) setEditingSession(firstSession);
    };
 
+   const handleEditSession = (s: any) => {
+      const clean = sessions.find(sess => sess.id === s.id);
+      if (clean) setEditingSession(clean);
+   };
+
    return (
       <div className="flex flex-col md:flex-row h-full relative">
          <div className={cn("fixed inset-y-0 left-0 z-50 w-72 bg-card border-r border-border p-4 flex flex-col gap-6 transition-transform duration-300 md:relative md:translate-x-0 md:bg-card/30 md:backdrop-blur-sm", isSidebarOpen ? "translate-x-0" : "-translate-x-full")}>
@@ -452,9 +467,9 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
             </div>
 
             <div className="flex-1 overflow-auto bg-card/5 relative">
-               {viewMode === 'week' && <WeekView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} weekDays={getWeekDays(currentDate)} onDrop={handleDrop} onEdit={setEditingSession} onRemovePlayer={handleRemovePlayerFromSession} onDragSession={setDraggedSessionId} onResizeStart={handleResizeStart} onCellClick={handleCellClick} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
-               {viewMode === 'month' && <MonthView currentDate={currentDate} events={events} dayEvents={dayEvents} location={selectedLocation} onEdit={setEditingSession} />}
-               {viewMode === 'day' && <DayView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} onDrop={handleDrop} onEdit={setEditingSession} onRemovePlayer={handleRemovePlayerFromSession} onResizeStart={handleResizeStart} onCellClick={handleCellClick} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
+               {viewMode === 'week' && <WeekView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} weekDays={getWeekDays(currentDate)} onDrop={handleDrop} onEdit={handleEditSession} onRemovePlayer={handleRemovePlayerFromSession} onDragSession={setDraggedSessionId} onResizeStart={handleResizeStart} onCellClick={handleCellClick} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
+               {viewMode === 'month' && <MonthView currentDate={currentDate} events={events} dayEvents={dayEvents} location={selectedLocation} onEdit={handleEditSession} />}
+               {viewMode === 'day' && <DayView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} onDrop={handleDrop} onEdit={handleEditSession} onRemovePlayer={handleRemovePlayerFromSession} onResizeStart={handleResizeStart} onCellClick={handleCellClick} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
             </div>
          </div>
 
@@ -768,8 +783,21 @@ function AccountsWorkspace({ clients, players, sessions, onUpsertClient, onDelet
    onMergeClients?: (sourceId: string, targetId: string) => void;
 }) {
    const [q, setQ] = useState('');
+   const [locationFilter, setLocationFilter] = useState('All');
    const [editingClient, setEditingClient] = useState<Client | null>(null);
-   const filtered = clients.filter((c: Client) => c.name.toLowerCase().includes(q.toLowerCase()));
+
+   const filtered = useMemo(() => {
+      let result = clients.filter((c: Client) => c.name.toLowerCase().includes(q.toLowerCase()));
+
+      if (locationFilter !== 'All') {
+         result = result.filter(c => {
+            const clientPlayers = players.filter(p => p.clientId === c.id);
+            return clientPlayers.some(p => p.intel?.location === locationFilter);
+         });
+      }
+
+      return result.sort((a, b) => a.name.localeCompare(b.name));
+   }, [clients, players, q, locationFilter]);
 
    return (
       <div className="p-8 max-w-6xl mx-auto h-full overflow-y-auto">
@@ -780,9 +808,22 @@ function AccountsWorkspace({ clients, players, sessions, onUpsertClient, onDelet
                   <Printer className="w-4 h-4" /> Print
                </Button>
             </div>
-            <div className="relative">
-               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-               <Input className="pl-9 w-64 bg-card/50" placeholder="Search..." value={q} onChange={e => setQ(e.target.value)} />
+            <div className="flex items-center gap-2">
+               <Select value={locationFilter} onValueChange={setLocationFilter}>
+                  <SelectTrigger className="w-[140px] bg-card/50 border-border">
+                     <SelectValue placeholder="Location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                     <SelectItem value="All">All Locations</SelectItem>
+                     <SelectItem value="Bothaville">Bothaville</SelectItem>
+                     <SelectItem value="Kroonstad">Kroonstad</SelectItem>
+                     <SelectItem value="Welkom">Welkom</SelectItem>
+                  </SelectContent>
+               </Select>
+               <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input className="pl-9 w-64 bg-card/50" placeholder="Search..." value={q} onChange={e => setQ(e.target.value)} />
+               </div>
             </div>
          </div>
          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -822,6 +863,199 @@ function AccountsWorkspace({ clients, players, sessions, onUpsertClient, onDelet
                   setEditingClient(null);
                }}
             />
+         )}
+      </div>
+   );
+}
+
+function PaymentLedger({ clients, onUpsertClient }: { clients: Client[], onUpsertClient: (c: Client) => void }) {
+   const [isAddOpen, setIsAddOpen] = useState(false);
+   const [q, setQ] = useState('');
+   const [sortDesc, setSortDesc] = useState(true);
+
+   // Add Modal State
+   const [newPaymentClient, setNewPaymentClient] = useState('');
+   const [newPaymentAmount, setNewPaymentAmount] = useState('');
+   const [newPaymentDate, setNewPaymentDate] = useState(getLocalISODate(new Date()));
+   const [newPaymentRef, setNewPaymentRef] = useState('');
+   const [newPaymentNote, setNewPaymentNote] = useState('');
+
+   const allPayments = useMemo(() => {
+      const list = clients.flatMap(c => (c.payments || []).map(p => ({
+         ...p,
+         clientName: c.name,
+         clientId: c.id
+      })));
+      
+      const filtered = list.filter(p => 
+         p.clientName.toLowerCase().includes(q.toLowerCase()) || 
+         p.reference?.toLowerCase().includes(q.toLowerCase())
+      );
+
+      return filtered.sort((a, b) => {
+         const dateA = new Date(a.date).getTime();
+         const dateB = new Date(b.date).getTime();
+         return sortDesc ? dateB - dateA : dateA - dateB;
+      });
+   }, [clients, q, sortDesc]);
+
+   const handleAddPayment = () => {
+      if (!newPaymentClient || !newPaymentAmount) return;
+      
+      const client = clients.find(c => c.id === newPaymentClient);
+      if (!client) return;
+
+      const payment: Payment = {
+         id: nanoid(),
+         date: newPaymentDate,
+         amount: parseFloat(newPaymentAmount),
+         reference: newPaymentRef,
+         note: newPaymentNote
+      };
+
+      onUpsertClient({
+         ...client,
+         payments: [...(client.payments || []), payment],
+         updatedAt: Date.now()
+      });
+
+      setIsAddOpen(false);
+      setNewPaymentClient('');
+      setNewPaymentAmount('');
+      setNewPaymentRef('');
+      setNewPaymentNote('');
+   };
+
+   return (
+      <div className="p-8 max-w-5xl mx-auto h-full flex flex-col relative">
+         <div className="flex items-center justify-between mb-8 shrink-0">
+            <div>
+               <h2 className="text-3xl font-black">Payment Ledger</h2>
+               <p className="text-sm text-muted-foreground">Track all incoming payments</p>
+            </div>
+            <div className="flex items-center gap-4">
+               <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input 
+                     placeholder="Search ledger..." 
+                     value={q} 
+                     onChange={e => setQ(e.target.value)} 
+                     className="pl-9 w-64 bg-card/50 border-border" 
+                  />
+               </div>
+               <Button onClick={() => setIsAddOpen(true)} className="gap-2 font-bold shadow-lg shadow-primary/20">
+                  <Plus className="w-4 h-4" /> Record Payment
+               </Button>
+            </div>
+         </div>
+
+         <div className="flex-1 overflow-hidden border border-border rounded-2xl bg-card/30 backdrop-blur-sm flex flex-col">
+            <div className="grid grid-cols-[120px_2fr_1fr_1.5fr_1fr] gap-4 p-4 border-b border-border bg-card/50 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+               <div className="cursor-pointer hover:text-foreground flex items-center gap-1" onClick={() => setSortDesc(!sortDesc)}>
+                  Date {sortDesc ? <ChevronLeft className="w-3 h-3 -rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />}
+               </div>
+               <div>Client</div>
+               <div className="text-right">Amount</div>
+               <div>Reference</div>
+               <div>Note</div>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+               {allPayments.map(p => (
+                  <div key={p.id} className="grid grid-cols-[120px_2fr_1fr_1.5fr_1fr] gap-4 p-4 border-b border-border/50 hover:bg-card/50 transition-colors items-center text-sm">
+                     <div className="font-mono text-muted-foreground">{p.date}</div>
+                     <div className="font-bold truncate">{p.clientName}</div>
+                     <div className="text-right font-mono font-bold text-emerald-400">R {p.amount.toLocaleString()}</div>
+                     <div className="truncate text-muted-foreground">{p.reference || '-'}</div>
+                     <div className="truncate text-muted-foreground text-xs italic">{p.note || '-'}</div>
+                  </div>
+               ))}
+               {allPayments.length === 0 && (
+                  <div className="p-8 text-center text-muted-foreground italic">No payments found.</div>
+               )}
+            </div>
+         </div>
+
+         {/* Add Payment Modal */}
+         {isAddOpen && (
+            <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+               <div className="w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                  <div className="p-6 border-b border-border flex items-center justify-between">
+                     <h3 className="text-xl font-black tracking-tight">Record Payment</h3>
+                     <Button variant="ghost" size="icon" onClick={() => setIsAddOpen(false)}><X className="w-5 h-5" /></Button>
+                  </div>
+                  
+                  <div className="p-6 space-y-6 overflow-y-auto">
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Client</label>
+                        <Select value={newPaymentClient} onValueChange={setNewPaymentClient}>
+                           <SelectTrigger className="bg-background border-border h-12">
+                              <SelectValue placeholder="Select Client...">
+                                 {clients.find(c => c.id === newPaymentClient)?.name}
+                              </SelectValue>
+                           </SelectTrigger>
+                           <SelectContent className="max-h-[200px]">
+                              {clients.sort((a,b) => a.name.localeCompare(b.name)).map(c => (
+                                 <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                              ))}
+                           </SelectContent>
+                        </Select>
+                     </div>
+
+                     <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                           <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Amount (R)</label>
+                           <Input 
+                              type="number" 
+                              placeholder="0.00" 
+                              value={newPaymentAmount} 
+                              onChange={e => setNewPaymentAmount(e.target.value)}
+                              className="bg-background border-border h-12 font-mono text-lg"
+                           />
+                        </div>
+                        <div className="space-y-2">
+                           <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Date</label>
+                           <Input 
+                              type="date" 
+                              value={newPaymentDate} 
+                              onChange={e => setNewPaymentDate(e.target.value)}
+                              className="bg-background border-border h-12"
+                           />
+                        </div>
+                     </div>
+
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Reference</label>
+                        <Input 
+                           placeholder="e.g. EFT Term 1, Cash, etc." 
+                           value={newPaymentRef} 
+                           onChange={e => setNewPaymentRef(e.target.value)}
+                           className="bg-background border-border h-12"
+                        />
+                     </div>
+
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Notes (Optional)</label>
+                        <Input 
+                           placeholder="Additional details..." 
+                           value={newPaymentNote} 
+                           onChange={e => setNewPaymentNote(e.target.value)}
+                           className="bg-background border-border h-12"
+                        />
+                     </div>
+                  </div>
+
+                  <div className="p-6 border-t border-border bg-card/50 rounded-b-2xl flex justify-end gap-3">
+                     <Button variant="ghost" onClick={() => setIsAddOpen(false)}>Cancel</Button>
+                     <Button 
+                        onClick={handleAddPayment} 
+                        disabled={!newPaymentClient || !newPaymentAmount}
+                        className="font-bold px-8 shadow-lg shadow-primary/20"
+                     >
+                        Save Payment
+                     </Button>
+                  </div>
+               </div>
+            </div>
          )}
       </div>
    );

@@ -90,7 +90,7 @@ export function AccountsStatement({ clients, players, sessions }: AccountsStatem
        fees: acc.fees + row.fees,
        payments: acc.payments + row.payments,
        balance: acc.balance + row.balance,
-       count: acc.sessionCount + row.sessionCount
+       count: acc.count + row.sessionCount
     }), { openingBalance: 0, fees: 0, payments: 0, balance: 0, count: 0 });
 
     return { rows, totals };

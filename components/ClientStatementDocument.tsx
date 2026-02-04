@@ -52,8 +52,7 @@ export function ClientStatementDocument({ client, players, sessions, onClose }: 
            .filter(Boolean);
 
         let typeDisplay = s.type;
-        if (s.type === 'Semi') typeDisplay = 'Semi Private';
-        if (s.type === 'Group') typeDisplay = 'Group'; 
+                 if (s.type === 'Semi') typeDisplay = 'Semi';        if (s.type === 'Group') typeDisplay = 'Group'; 
         if (s.type === 'Private') typeDisplay = 'Private'; 
 
         // Correct suffix logic

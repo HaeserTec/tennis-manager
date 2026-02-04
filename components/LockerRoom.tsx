@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -21,6 +22,7 @@ interface LockerRoomProps {
   onMergeClients?: (sourceId: string, targetId: string) => void;
   onAssignDrill: (playerId: string, drillId: string) => void;
   onUnassignDrill: (playerId: string, drillId: string) => void;
+  onUploadFile?: (bucket: string, file: File) => Promise<string | null>;
   initialSelectedPlayerId?: string | null;
 }
 
@@ -371,6 +373,7 @@ export function LockerRoom({ players, drills, clients = [], sessions = [], onUpd
               players={players}
               drills={drills}
               clients={clients}
+              sessions={sessions}
               onUpdate={onUpdatePlayer}
               onUpsertClient={onUpsertClient}
               onDelete={onDeletePlayer}
@@ -393,7 +396,7 @@ export function LockerRoom({ players, drills, clients = [], sessions = [], onUpd
   );
 }
 
-function PlayerDetailView({ player, players, drills, clients, onUpdate, onUpsertClient, onDelete, onDeleteClient, onMergeClients, onBack, onAssignDrill, onUnassignDrill }: any) {
+function PlayerDetailView({ player, players, drills, clients, sessions, onUpdate, onUpsertClient, onDelete, onDeleteClient, onMergeClients, onBack, onAssignDrill, onUnassignDrill }: any) {
    const assignedDrillsData = drills.filter((d: Drill) => player.assignedDrills.includes(d.id));
    const fileInputRef = useRef<HTMLInputElement>(null);
    const [showColors, setShowColors] = useState(false);
@@ -413,6 +416,14 @@ function PlayerDetailView({ player, players, drills, clients, onUpdate, onUpsert
       onUpdate({
          ...player,
          [category]: { ...(player[category] || {}), [key]: val },
+         updatedAt: Date.now()
+      });
+   };
+
+   const updateEquipment = (key: string, val: any) => {
+      onUpdate({
+         ...player,
+         equipment: { ...(player.equipment || {}), [key]: val },
          updatedAt: Date.now()
       });
    };
@@ -790,7 +801,9 @@ function PlayerDetailView({ player, players, drills, clients, onUpdate, onUpsert
                             })}
                          </div>
                       </Section>
+                      
                       <Section title="Goals">
+// ...
                          <div className="p-4 rounded-xl bg-card/30 border border-border">
                             <p className="text-sm text-muted-foreground text-center py-4">
                                View detailed progress tracking, goals, and trends in the dedicated Progress view.
@@ -811,6 +824,7 @@ function PlayerDetailView({ player, players, drills, clients, onUpdate, onUpsert
                client={editingClient}
                players={players || []}
                allClients={clients || []}
+               sessions={sessions || []}
                isOpen={true}
                onClose={() => setEditingClient(null)}
                onSave={(updated) => {

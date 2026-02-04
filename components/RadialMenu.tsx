@@ -24,7 +24,7 @@ export function RadialMenu({ x, y, onClose, onSelect }: RadialMenuProps) {
   return (
     <div 
       className="absolute z-50"
-      style={{ left: position.x - 100, top: position.y - 100 }}
+      style={{ left: x - 64, top: y - 64 }}
     >
       {/* Central Close Button */}
       <div className="relative w-32 h-32 flex items-center justify-center">

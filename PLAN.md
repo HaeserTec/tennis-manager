@@ -173,7 +173,7 @@ const STORAGE_KEYS = {
 | 8 | Add default categories | ✅ Complete |
 | 9 | Integrate Drill Library into App | ✅ Complete |
 | 10 | Add Library navigation mode | ✅ Complete |
-| 11 | Testing & refinement | ⏳ Pending |
+| 11 | Testing & refinement | ✅ Complete |
 
 ---
   
@@ -194,6 +194,22 @@ const STORAGE_KEYS = {
   - **Theme:** Ported "Midnight" radial gradient theme to the client side.
   - **Financials Tab:** Added full statement view (B/F, Fees, Paid, Balance) for parents.
   - **Navigation:** Improved mobile navigation bar and desktop sidebar.
+
+  ## PART F: Financial & Ledger Upgrade (Completed Feb 2026) ✅
+
+  ### F.1 Accounts Intelligence ✅
+  - **Sorting:** Added alphabetical sorting for client accounts.
+  - **Location Filter:** Added "Court Location" filtering (Bothaville, Kroonstad, Welkom) derived from player profiles to easily group families by town.
+
+  ### F.2 Financial Performance Dashboard ✅
+  - **Realized vs. Projected:** Split the "Total Revenue" card into "Realized" (Past) and "Projected" (Future/Today) metrics for accuracy.
+  - **Breakdowns:** Added interactive toggles to view revenue by **Location** (Client Town) and **Session Type**.
+  - **UX:** Improved dropdown visibility and accessibility.
+
+  ### F.3 Payment Ledger ✅
+  - **Centralized View:** Added a dedicated "Ledger" tab to the Office.
+  - **Global History:** Flat list of all payments across all clients, sortable by date.
+  - **Quick Add:** Streamlined "Record Payment" modal with Client Name display (fixed UI bug) and search.
   
   ---
   

@@ -120,6 +120,7 @@ create table players (
   schedule jsonb, -- Legacy schedule field, kept for safety
   account jsonb,
   progress_goals jsonb,
+  curriculum_progress jsonb,
   created_at bigint,
   updated_at bigint
 );
@@ -141,6 +142,7 @@ create table training_sessions (
   participant_ids text[],
   max_capacity integer default 1,
   notes text,
+  series_id text,
   created_at bigint,
   updated_at bigint
 );
@@ -180,6 +182,8 @@ create table session_logs (
   anchor_serve_in integer,
   note text,
   next_focus text,
+  effort integer,
+  is_shared_with_parent boolean default false,
   created_at bigint,
   updated_at bigint
 );
@@ -200,3 +204,40 @@ create table terms (
 alter table terms enable row level security;
 create policy "Users can manage their own terms" on terms
   for all using (auth.uid() = user_id);
+
+-- 11. Day Events
+create table day_events (
+  id text primary key,
+  user_id uuid references auth.users not null default auth.uid(),
+  date text not null,
+  type text not null,
+  note text,
+  created_at bigint,
+  updated_at bigint
+);
+alter table day_events enable row level security;
+create policy "Users can manage their own day events" on day_events
+  for all using (auth.uid() = user_id);
+
+-- 12. Curriculums
+create table curriculums (
+  id text primary key,
+  user_id uuid references auth.users not null default auth.uid(),
+  name text not null,
+  description text,
+  level text,
+  modules jsonb default '[]'::jsonb,
+  created_at bigint,
+  updated_at bigint
+);
+alter table curriculums enable row level security;
+create policy "Users can manage their own curriculums" on curriculums
+  for all using (auth.uid() = user_id);
+
+-- MIGRATION: Add missing columns to existing tables
+-- Run these if you have an existing database
+
+-- alter table training_sessions add column if not exists series_id text;
+-- alter table session_logs add column if not exists effort integer;
+-- alter table session_logs add column if not exists is_shared_with_parent boolean default false;
+-- alter table players add column if not exists curriculum_progress jsonb default '[]'::jsonb;

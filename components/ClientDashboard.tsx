@@ -34,7 +34,11 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
     .slice(0, 5); // Next 5
 
   const selectedPlayer = myPlayers.find(p => p.id === selectedPlayerId);
-  const playerLogs = selectedPlayer ? logs.filter(l => l.playerId === selectedPlayer.id).sort((a,b) => b.createdAt - a.createdAt) : [];
+  const playerLogs = selectedPlayer 
+    ? logs
+        .filter(l => l.playerId === selectedPlayer.id && l.isSharedWithParent)
+        .sort((a,b) => b.createdAt - a.createdAt) 
+    : [];
 
   const handlePlayerClick = (pid: string) => {
     setSelectedPlayerId(pid);
@@ -217,19 +221,31 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                           {playerLogs.length > 0 ? playerLogs.map(log => (
                              <div key={log.id} className="p-3 rounded-xl bg-card/50 border border-white/5 hover:bg-card/80 transition-colors">
                                 <div className="flex justify-between items-center mb-1">
-                                   <span className="text-xs font-bold text-muted-foreground">{log.date}</span>
+                                   <div className="flex flex-col">
+                                      <span className="text-xs font-bold text-muted-foreground">{log.date}</span>
+                                      {log.effort && (
+                                         <div className="flex gap-0.5 mt-0.5">
+                                            {[1,2,3,4,5].map(v => (
+                                               <div key={v} className={cn("w-1.5 h-1.5 rounded-full", log.effort >= v ? "bg-orange-500" : "bg-white/10")} />
+                                            ))}
+                                         </div>
+                                      )}
+                                   </div>
                                    <span className="text-xs font-bold bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">
                                       {log.totalScore}/10
                                    </span>
                                 </div>
+                                {log.note && (
+                                   <p className="text-[11px] text-foreground mt-2 leading-relaxed italic">"{log.note}"</p>
+                                )}
                                 {log.nextFocus && (
-                                   <p className="text-xs text-muted-foreground mt-1">
-                                      <span className="font-bold text-primary">Focus:</span> {log.nextFocus}
+                                   <p className="text-[10px] text-muted-foreground mt-2">
+                                      <span className="font-bold text-primary uppercase tracking-widest">Next Focus:</span> {log.nextFocus}
                                    </p>
                                 )}
                              </div>
                           )) : (
-                             <div className="text-center py-10 text-sm text-muted-foreground italic">No sessions logged yet.</div>
+                             <div className="text-center py-10 text-sm text-muted-foreground italic">No shared session reports yet.</div>
                           )}
                        </div>
                     </div>
@@ -496,7 +512,7 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                      <div className="space-y-3">
                         {myPlayers.flatMap(p => 
                            logs
-                              .filter(l => l.playerId === p.id)
+                              .filter(l => l.playerId === p.id && l.isSharedWithParent)
                               .map(l => ({ ...l, playerName: p.name }))
                         )
                         .sort((a,b) => b.createdAt - a.createdAt)
@@ -511,10 +527,13 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                                     <span className="font-bold text-sm">{log.playerName}</span>
                                     <span className="text-xs text-muted-foreground font-mono">{log.date}</span>
                                  </div>
-                                 <p className="text-xs text-muted-foreground line-clamp-1">{log.note || "Session completed successfully."}</p>
+                                 <p className="text-xs text-muted-foreground line-clamp-1 italic">"{log.note || "Session report shared."}"</p>
                               </div>
                            </div>
                         ))}
+                        {myPlayers.flatMap(p => logs.filter(l => l.playerId === p.id && l.isSharedWithParent)).length === 0 && (
+                           <div className="py-10 text-center text-sm text-muted-foreground italic">No recent activity shared.</div>
+                        )}
                      </div>
                  </div>
               </div>

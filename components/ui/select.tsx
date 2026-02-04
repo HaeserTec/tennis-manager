@@ -44,9 +44,9 @@ export const SelectTrigger = ({ className, children }: any) => {
   );
 };
 
-export const SelectValue = ({ placeholder }: { placeholder?: string }) => {
+export const SelectValue = ({ placeholder, children }: { placeholder?: string, children?: React.ReactNode }) => {
   const { value } = React.useContext(SelectContext);
-  return <span className="block truncate">{value || placeholder}</span>;
+  return <span className="block truncate">{children || value || placeholder}</span>;
 };
 
 export const SelectContent = ({ children, className }: any) => {

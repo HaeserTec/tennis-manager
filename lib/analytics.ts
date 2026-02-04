@@ -14,6 +14,10 @@ export function computeTotalScore(scores: ScoreData): number {
 
 export type DashboardStats = {
   totalRevenue: number;
+  realizedRevenue: number;
+  projectedRevenue: number;
+  revenueByLocation: Record<string, number>;
+  revenueByType: Record<string, number>;
   revenueChange: number;
   totalSessions: number;
   sessionsChange: number;
@@ -229,19 +233,55 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 
 export function calculateDashboardStats(players: Player[], sessions: TrainingSession[]): DashboardStats {
   let totalRevenue = 0;
+  let realizedRevenue = 0;
+  let projectedRevenue = 0;
+  
+  const revenueByLocation: Record<string, number> = {};
+  const revenueByType: Record<string, number> = {};
+  
   let totalSessions = sessions.length;
   const activeClientIds = new Set<string>();
   const sessionTypeCounts: Record<string, number> = { Private: 0, Semi: 0, Group: 0 };
+  
+  // Get local YYYY-MM-DD for comparison
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60000;
+  const todayStr = new Date(now.getTime() - offset).toISOString().split('T')[0];
 
   sessions.forEach(s => {
-     // Assuming price is per session, not per player, but logic might vary.
-     // For now, let's assume total revenue = sum of all session prices * number of participants?
-     // OR if the price on the session is the "Rate", then it's per hour.
-     // Let's assume price is total session fee for simplicity, or per player?
-     // Convention: Private R350 (Total), Group R200 (Per head? or Total?).
-     // Let's assume the session.price is the total revenue for that slot.
+     const price = s.price || 0;
+     totalRevenue += price;
      
-     totalRevenue += (s.price || 0);
+     // Split Realized (Past) vs Projected (Today/Future)
+     if (s.date < todayStr) {
+        realizedRevenue += price;
+        
+        // Breakdowns apply to Realized Revenue
+        revenueByType[s.type] = (revenueByType[s.type] || 0) + price;
+
+        // Location Breakdown: Derived from Players (Intel)
+        const participants = players.filter(p => s.participantIds.includes(p.id));
+        const participantLocations = participants
+           .map(p => p.intel?.location)
+           .filter((l): l is string => !!l && l.trim() !== ''); // Filter out empty/undefined
+        
+        // Unique locations for this session
+        const uniqueLocations = Array.from(new Set(participantLocations));
+
+        if (uniqueLocations.length > 0) {
+           // Split revenue equally among the locations involved (usually just 1)
+           const splitPrice = price / uniqueLocations.length;
+           uniqueLocations.forEach(loc => {
+              revenueByLocation[loc] = (revenueByLocation[loc] || 0) + splitPrice;
+           });
+        } else {
+           // Fallback to session location if no player intel available
+           revenueByLocation[s.location] = (revenueByLocation[s.location] || 0) + price;
+        }
+
+     } else {
+        projectedRevenue += price;
+     }
      
      sessionTypeCounts[s.type] = (sessionTypeCounts[s.type] || 0) + 1;
      s.participantIds.forEach(pid => {
@@ -262,6 +302,10 @@ export function calculateDashboardStats(players: Player[], sessions: TrainingSes
 
   return {
     totalRevenue,
+    realizedRevenue,
+    projectedRevenue,
+    revenueByLocation,
+    revenueByType,
     revenueChange: 100, // Placeholder
     totalSessions,
     sessionsChange: 100, // Placeholder

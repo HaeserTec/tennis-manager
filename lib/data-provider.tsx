@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { 
-  Drill, DrillTemplate, Sequence, SessionPlan, Player, Client, TrainingSession, 
-  LocationConfig, SessionLog, Term, DayEvent 
+import {
+  Drill, DrillTemplate, Sequence, SessionPlan, Player, Client, TrainingSession,
+  LocationConfig, SessionLog, Term, DayEvent, DEFAULT_DRILLS
 } from './playbook';
 import { nanoid, safeJsonParse, nowMs, getPathLength } from './utils';
 import { supabase } from './supabase';
@@ -97,7 +97,6 @@ interface DataContextType {
   setLogs: React.Dispatch<React.SetStateAction<SessionLog[]>>;
   setTerms: React.Dispatch<React.SetStateAction<Term[]>>;
   setDayEvents: React.Dispatch<React.SetStateAction<DayEvent[]>>;
-
   // High-Level Actions
   addDrill: (drill: Drill) => void;
   updateDrill: (drill: Drill) => void;
@@ -141,7 +140,13 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [drills, setDrills] = useState<Drill[]>(() => {
     const saved = safeJsonParse<Drill[]>(localStorage.getItem('tactics-lab-drills'), []);
-    return (saved ?? []).map(normalizeDrill);
+    const normalized = (saved ?? []).map(normalizeDrill);
+    
+    // Merge defaults: Only add defaults that don't already exist in the saved list (by ID)
+    const existingIds = new Set(normalized.map(d => d.id));
+    const missingDefaults = DEFAULT_DRILLS.filter(d => !existingIds.has(d.id)).map(normalizeDrill);
+    
+    return [...normalized, ...missingDefaults];
   });
   const [templates, setTemplates] = useState<DrillTemplate[]>(() => {
       const saved = safeJsonParse<DrillTemplate[]>(localStorage.getItem('tactics-lab-templates'), PRESET_TEMPLATES);
@@ -252,6 +257,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                 delete transformed.date_obj;
                 delete transformed.start_hour;
                 delete transformed.participants;
+                delete transformed.start_key;
             }
             if (tableName === 'players') {
                 delete transformed.age;

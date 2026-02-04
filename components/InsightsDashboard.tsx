@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { Player, TrainingSession } from '@/lib/playbook';
-import { calculateDashboardStats, getRevenueChartData, getHeatmapData, getClientHealth } from '@/lib/analytics';
+import { calculateDashboardStats, getRevenueChartData, getHeatmapData, getClientHealth, DashboardStats } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
 import { Activity, TrendingUp, TrendingDown, Users, Calendar, AlertTriangle, CheckCircle, BarChart3, PieChart, Clock, Zap, Heart } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface InsightsDashboardProps {
   players: Player[];
@@ -50,14 +51,7 @@ export function InsightsDashboard({ players, sessions }: InsightsDashboardProps)
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-         <StatCard 
-            title="Total Revenue" 
-            value={`R${stats.totalRevenue.toLocaleString()}`} 
-            trend={stats.revenueChange} 
-            icon={<Activity className="w-5 h-5 text-emerald-400" />}
-            color="emerald"
-            delay={0}
-         />
+         <RevenueCard stats={stats} />
          <StatCard 
             title="Total Sessions" 
             value={stats.totalSessions.toString()} 
@@ -238,6 +232,68 @@ export function InsightsDashboard({ players, sessions }: InsightsDashboardProps)
 
     </div>
   );
+}
+
+function RevenueCard({ stats }: { stats: DashboardStats }) {
+   const [view, setView] = useState<'total'|'location'|'type'>('total');
+
+   return (
+      <div className="p-6 rounded-2xl bg-card/40 backdrop-blur border border-white/5 shadow-lg relative overflow-hidden group h-[160px] flex flex-col">
+         <div className="flex justify-between items-start mb-2 relative z-10 shrink-0">
+            <Select value={view} onValueChange={(v: any) => setView(v)}>
+               <SelectTrigger className="h-7 w-[140px] text-[10px] font-black uppercase tracking-[0.2em] text-foreground bg-card/50 border border-white/10 hover:bg-white/10 focus:ring-1 focus:ring-primary/50 px-3 shadow-sm rounded-lg transition-all">
+                  <SelectValue placeholder="Metric" />
+               </SelectTrigger>
+               <SelectContent>
+                  <SelectItem value="total">Total Revenue</SelectItem>
+                  <SelectItem value="location">By Location</SelectItem>
+                  <SelectItem value="type">By Type</SelectItem>
+               </SelectContent>
+            </Select>
+            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
+               <Activity className="w-5 h-5" />
+            </div>
+         </div>
+         
+         <div className="relative z-10 flex-1 flex flex-col justify-center">
+            {view === 'total' && (
+               <>
+                  <h3 className="text-2xl font-black tracking-tight">R{stats.realizedRevenue.toLocaleString()}</h3>
+                  <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1 flex items-center gap-1">
+                     <span className="text-emerald-400">+R{stats.projectedRevenue.toLocaleString()}</span> Projected
+                  </div>
+               </>
+            )}
+
+            {view === 'location' && (
+               <div className="space-y-1.5 overflow-y-auto custom-scrollbar -mr-2 pr-2 h-full">
+                  {Object.entries(stats.revenueByLocation)
+                     .sort(([,a], [,b]) => b - a)
+                     .map(([loc, val]) => (
+                     <div key={loc} className="flex justify-between items-center text-xs">
+                        <span className="text-muted-foreground truncate max-w-[120px]">{loc}</span>
+                        <span className="font-mono font-bold">R{val.toLocaleString()}</span>
+                     </div>
+                  ))}
+                  {Object.keys(stats.revenueByLocation).length === 0 && <span className="text-xs text-muted-foreground italic">No data</span>}
+               </div>
+            )}
+
+            {view === 'type' && (
+               <div className="space-y-1.5 overflow-y-auto custom-scrollbar -mr-2 pr-2 h-full">
+                  {Object.entries(stats.revenueByType)
+                     .sort(([,a], [,b]) => b - a)
+                     .map(([type, val]) => (
+                     <div key={type} className="flex justify-between items-center text-xs">
+                        <span className="text-muted-foreground truncate">{type}</span>
+                        <span className="font-mono font-bold">R{val.toLocaleString()}</span>
+                     </div>
+                  ))}
+               </div>
+            )}
+         </div>
+      </div>
+   );
 }
 
 function StatCard({ title, value, trend, icon, color, delay, subtext }: any) {

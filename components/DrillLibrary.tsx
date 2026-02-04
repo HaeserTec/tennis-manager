@@ -302,6 +302,7 @@ interface DrillCardProps {
   onSelect: () => void;
   onUpdate: (drill: Drill) => void;
   onDelete: () => void;
+  key?: any;
 }
 
 function DrillCard({ drill, category, viewMode, onSelect, onUpdate, onDelete }: DrillCardProps) {
