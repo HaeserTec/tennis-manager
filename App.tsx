@@ -124,6 +124,7 @@ export default function App() {
      logs, upsertLog, uploadFile,
      terms,
      dayEvents, upsertDayEvent, deleteDayEvent,
+     expenses, upsertExpense, deleteExpense,
      forceSync,
      importData
   } = useData();
@@ -1229,6 +1230,7 @@ export default function App() {
                 clients={clients}
                 sessions={sessions}
                 dayEvents={dayEvents}
+                expenses={expenses}
                 onUpdatePlayer={updatePlayer}
                 onUpsertClient={upsertClient}
                 onDeleteClient={deleteClient}
@@ -1237,6 +1239,8 @@ export default function App() {
                 onDeleteSession={deleteSession}
                 upsertDayEvent={upsertDayEvent}
                 deleteDayEvent={deleteDayEvent}
+                upsertExpense={upsertExpense}
+                deleteExpense={deleteExpense}
                 onUploadFile={uploadFile}
                 onClose={handleGoHome}
              />

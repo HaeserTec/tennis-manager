@@ -2,13 +2,13 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn, nanoid } from '@/lib/utils';
-import type { Player, Client, Payment, TrainingSession, SessionType, LocationConfig, DayEvent, DayEventType } from '@/lib/playbook';
+import type { Player, Client, Payment, TrainingSession, SessionType, LocationConfig, DayEvent, DayEventType, Expense } from '@/lib/playbook';
 import {
   Check, X, Phone, Search, Calendar as CalendarIcon, Users,
   Activity, Plus, Clock, FileText, Briefcase, DollarSign,
   Trash2, ChevronLeft, ChevronRight, Edit2, SlidersHorizontal,
   Share2, CreditCard, Repeat, Lock, LockOpen, CloudRain, Ban, Printer,
-  BookOpen, Sparkles
+  BookOpen, Sparkles, TrendingDown
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InsightsDashboard } from './InsightsDashboard';
@@ -22,6 +22,7 @@ interface AcademyOfficeProps {
   clients: Client[];
   sessions: TrainingSession[];
   dayEvents: DayEvent[];
+  expenses: Expense[];
   onUpdatePlayer: (player: Player) => void;
   onUpsertClient: (client: Client) => void;
   onDeleteClient?: (clientId: string) => void;
@@ -30,11 +31,13 @@ interface AcademyOfficeProps {
   onDeleteSession: (sessionId: string) => void;
   upsertDayEvent: (event: DayEvent) => void;
   deleteDayEvent: (id: string) => void;
+  upsertExpense: (expense: Expense) => void;
+  deleteExpense: (id: string) => void;
   onUploadFile?: (bucket: string, file: File) => Promise<string | null>;
   onClose: () => void;
 }
 
-type Tab = 'insights' | 'scheduler' | 'accounts' | 'bookings' | 'payments';
+type Tab = 'insights' | 'scheduler' | 'accounts' | 'bookings' | 'payments' | 'expenses';
 type RepeatMode = 'None' | 'Month' | 'Term' | 'Year';
 
 const SESSION_PRICING = { Private: 350, Semi: 250, Group: 200 };
@@ -61,10 +64,12 @@ const getLocalISODate = (date: Date): string => {
 };
 
 export function AcademyOffice({
-  players, locations, clients, sessions, dayEvents = [],
+  players, locations, clients, sessions, dayEvents = [], expenses = [],
   onUpdatePlayer, onUpsertClient, onDeleteClient, onMergeClients,
   onUpsertSession, onDeleteSession,
-  upsertDayEvent, deleteDayEvent, onClose
+  upsertDayEvent, deleteDayEvent,
+  upsertExpense, deleteExpense,
+  onClose
 }: AcademyOfficeProps) {
   const [activeTab, setActiveTab] = useState<Tab>('insights');
 
@@ -89,6 +94,7 @@ export function AcademyOffice({
            <NavTab id="accounts" label="Accounts" icon={<Users className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
            <NavTab id="bookings" label="Bookings" icon={<Clock className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
            <NavTab id="payments" label="Ledger" icon={<DollarSign className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
+           <NavTab id="expenses" label="Expenses" icon={<TrendingDown className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
         </nav>
         
         <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-red-500/10 hover:text-red-500 shrink-0">
@@ -98,7 +104,7 @@ export function AcademyOffice({
 
       <div className="flex-1 overflow-hidden relative">
          <div className={cn("h-full w-full", activeTab !== 'insights' && "hidden")}>
-            <InsightsDashboard players={players} sessions={sessions} />
+            <InsightsDashboard players={players} sessions={sessions} clients={clients} expenses={expenses} />
          </div>
          <div className={cn("h-full w-full", activeTab !== 'scheduler' && "hidden")}>
             <SchedulerWorkspace 
@@ -123,9 +129,159 @@ export function AcademyOffice({
          <div className={cn("h-full w-full", activeTab !== 'payments' && "hidden")}>
             <PaymentLedger clients={clients} onUpsertClient={onUpsertClient} />
          </div>
+         <div className={cn("h-full w-full", activeTab !== 'expenses' && "hidden")}>
+            <ExpenseTracker expenses={expenses} upsertExpense={upsertExpense} deleteExpense={deleteExpense} />
+         </div>
       </div>
     </div>
   );
+}
+
+// ... existing components ...
+
+function ExpenseTracker({ expenses, upsertExpense, deleteExpense }: { expenses: Expense[], upsertExpense: (e: Expense) => void, deleteExpense: (id: string) => void }) {
+   const [isAddOpen, setIsAddOpen] = useState(false);
+   const [q, setQ] = useState('');
+   const [sortDesc, setSortDesc] = useState(true);
+
+   // Add Modal State
+   const [date, setDate] = useState(getLocalISODate(new Date()));
+   const [category, setCategory] = useState<'Equipment'|'Court Hire'|'Travel'|'Marketing'|'Salary'|'Other'>('Other');
+   const [amount, setAmount] = useState('');
+   const [description, setDescription] = useState('');
+
+   const filteredExpenses = useMemo(() => {
+      const list = expenses.filter(e => 
+         e.description.toLowerCase().includes(q.toLowerCase()) || 
+         e.category.toLowerCase().includes(q.toLowerCase())
+      );
+      return list.sort((a, b) => {
+         const dateA = new Date(a.date).getTime();
+         const dateB = new Date(b.date).getTime();
+         return sortDesc ? dateB - dateA : dateA - dateB;
+      });
+   }, [expenses, q, sortDesc]);
+
+   const handleAdd = () => {
+      if (!amount) return;
+      upsertExpense({
+         id: nanoid(),
+         date,
+         category,
+         amount: parseFloat(amount),
+         description,
+         createdAt: Date.now(),
+         updatedAt: Date.now()
+      });
+      setIsAddOpen(false);
+      setAmount('');
+      setDescription('');
+      setCategory('Other');
+   };
+
+   return (
+      <div className="p-8 max-w-5xl mx-auto h-full flex flex-col relative">
+         <div className="flex items-center justify-between mb-8 shrink-0">
+            <div>
+               <h2 className="text-3xl font-black">Expense Tracker</h2>
+               <p className="text-sm text-muted-foreground">Manage operational costs</p>
+            </div>
+            <div className="flex items-center gap-4">
+               <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input 
+                     placeholder="Search expenses..." 
+                     value={q} 
+                     onChange={e => setQ(e.target.value)} 
+                     className="pl-9 w-64 bg-card/50 border-border" 
+                  />
+               </div>
+               <Button onClick={() => setIsAddOpen(true)} className="gap-2 font-bold shadow-lg shadow-primary/20 bg-rose-500 hover:bg-rose-600 text-white">
+                  <Plus className="w-4 h-4" /> Add Expense
+               </Button>
+            </div>
+         </div>
+
+         <div className="flex-1 overflow-hidden border border-border rounded-2xl bg-card/30 backdrop-blur-sm flex flex-col">
+            <div className="grid grid-cols-[120px_1fr_2fr_1fr_60px] gap-4 p-4 border-b border-border bg-card/50 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+               <div className="cursor-pointer hover:text-foreground flex items-center gap-1" onClick={() => setSortDesc(!sortDesc)}>
+                  Date {sortDesc ? <ChevronLeft className="w-3 h-3 -rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />}
+               </div>
+               <div>Category</div>
+               <div>Description</div>
+               <div className="text-right">Amount</div>
+               <div className="text-center">Action</div>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+               {filteredExpenses.map(e => (
+                  <div key={e.id} className="grid grid-cols-[120px_1fr_2fr_1fr_60px] gap-4 p-4 border-b border-border/50 hover:bg-card/50 transition-colors items-center text-sm">
+                     <div className="font-mono text-muted-foreground">{e.date}</div>
+                     <div className="font-bold text-xs uppercase tracking-wide opacity-80">{e.category}</div>
+                     <div className="truncate text-muted-foreground">{e.description || '-'}</div>
+                     <div className="text-right font-mono font-bold text-rose-400">R {e.amount.toLocaleString()}</div>
+                     <div className="text-center">
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-rose-500" onClick={() => { if(confirm('Delete expense?')) deleteExpense(e.id); }}>
+                           <Trash2 className="w-3 h-3" />
+                        </Button>
+                     </div>
+                  </div>
+               ))}
+               {filteredExpenses.length === 0 && (
+                  <div className="p-8 text-center text-muted-foreground italic">No expenses recorded.</div>
+               )}
+            </div>
+         </div>
+
+         {isAddOpen && (
+            <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+               <div className="w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+                  <div className="p-6 border-b border-border flex items-center justify-between">
+                     <h3 className="text-xl font-black tracking-tight">Add Expense</h3>
+                     <Button variant="ghost" size="icon" onClick={() => setIsAddOpen(false)}><X className="w-5 h-5" /></Button>
+                  </div>
+                  
+                  <div className="p-6 space-y-6">
+                     <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                           <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Date</label>
+                           <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-background border-border h-12" />
+                        </div>
+                        <div className="space-y-2">
+                           <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Category</label>
+                           <Select value={category} onValueChange={(v: any) => setCategory(v)}>
+                              <SelectTrigger className="bg-background border-border h-12"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                 <SelectItem value="Equipment">Equipment</SelectItem>
+                                 <SelectItem value="Court Hire">Court Hire</SelectItem>
+                                 <SelectItem value="Travel">Travel</SelectItem>
+                                 <SelectItem value="Marketing">Marketing</SelectItem>
+                                 <SelectItem value="Salary">Salary</SelectItem>
+                                 <SelectItem value="Other">Other</SelectItem>
+                              </SelectContent>
+                           </Select>
+                        </div>
+                     </div>
+
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Amount (R)</label>
+                        <Input type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} className="bg-background border-border h-12 font-mono text-lg" />
+                     </div>
+
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Description</label>
+                        <Input placeholder="Details..." value={description} onChange={e => setDescription(e.target.value)} className="bg-background border-border h-12" />
+                     </div>
+                  </div>
+
+                  <div className="p-6 border-t border-border bg-card/50 rounded-b-2xl flex justify-end gap-3">
+                     <Button variant="ghost" onClick={() => setIsAddOpen(false)}>Cancel</Button>
+                     <Button onClick={handleAdd} disabled={!amount} className="font-bold px-8 shadow-lg bg-rose-500 hover:bg-rose-600 text-white">Save Expense</Button>
+                  </div>
+               </div>
+            </div>
+         )}
+      </div>
+   );
 }
 
 function NavTab({ id, label, icon, active, onClick }: { id: Tab, label: string, icon: React.ReactNode, active: Tab, onClick: (t: Tab) => void }) {

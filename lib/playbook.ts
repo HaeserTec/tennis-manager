@@ -270,6 +270,16 @@ export interface SessionLog {
   updatedAt: number;
 }
 
+export interface Expense {
+  id: string;
+  date: string; // YYYY-MM-DD
+  category: 'Equipment' | 'Court Hire' | 'Travel' | 'Marketing' | 'Salary' | 'Other';
+  description: string;
+  amount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ============================================
 // PROGRESS TRACKING TYPES
 // ============================================

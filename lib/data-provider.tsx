@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import {
   Drill, DrillTemplate, Sequence, SessionPlan, Player, Client, TrainingSession,
-  LocationConfig, SessionLog, Term, DayEvent, DEFAULT_DRILLS
+  LocationConfig, SessionLog, Term, DayEvent, Expense, DEFAULT_DRILLS
 } from './playbook';
 import { nanoid, safeJsonParse, nowMs, getPathLength } from './utils';
 import { supabase } from './supabase';
@@ -84,6 +84,7 @@ interface DataContextType {
   logs: SessionLog[];
   terms: Term[];
   dayEvents: DayEvent[];
+  expenses: Expense[];
 
   // Actions
   setDrills: React.Dispatch<React.SetStateAction<Drill[]>>;
@@ -97,6 +98,8 @@ interface DataContextType {
   setLogs: React.Dispatch<React.SetStateAction<SessionLog[]>>;
   setTerms: React.Dispatch<React.SetStateAction<Term[]>>;
   setDayEvents: React.Dispatch<React.SetStateAction<DayEvent[]>>;
+  setExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
+
   // High-Level Actions
   addDrill: (drill: Drill) => void;
   updateDrill: (drill: Drill) => void;
@@ -127,6 +130,9 @@ interface DataContextType {
   
   upsertDayEvent: (event: DayEvent) => void;
   deleteDayEvent: (id: string) => void;
+
+  upsertExpense: (expense: Expense) => void;
+  deleteExpense: (id: string) => void;
 
   uploadFile: (bucket: string, file: File) => Promise<string | null>;
   forceSync: (direction?: 'auto' | 'upload' | 'download') => Promise<void>;
@@ -189,14 +195,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [dayEvents, setDayEvents] = useState<DayEvent[]>(() => {
       return safeJsonParse<DayEvent[]>(localStorage.getItem('tactics-lab-day-events'), []);
   });
+  const [expenses, setExpenses] = useState<Expense[]>(() => {
+      return safeJsonParse<Expense[]>(localStorage.getItem('tactics-lab-expenses'), []);
+  });
 
   const stateRef = useRef({
-      drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents
+      drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents, expenses
   });
 
   useEffect(() => {
-      stateRef.current = { drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents };
-  }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents]);
+      stateRef.current = { drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents, expenses };
+  }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents, expenses]);
 
   const hasSynced = useRef(false);
   const lastSyncTime = useRef(0);
@@ -364,7 +373,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             syncTable('locations', localState.locations, setLocations),
             syncTable('terms', localState.terms, setTerms),
             syncTable('day_events', localState.dayEvents, setDayEvents),
-            syncTable('session_logs', localState.logs, setLogs)
+            syncTable('session_logs', localState.logs, setLogs),
+            syncTable('expenses', localState.expenses, setExpenses)
         ]);
     } catch (err: any) {}
   }, []);
@@ -389,6 +399,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { localStorage.setItem('tactics-lab-logs', JSON.stringify(logs)); }, [logs]);
   useEffect(() => { localStorage.setItem('tactics-lab-terms', JSON.stringify(terms)); }, [terms]);
   useEffect(() => { localStorage.setItem('tactics-lab-day-events', JSON.stringify(dayEvents)); }, [dayEvents]);
+  useEffect(() => { localStorage.setItem('tactics-lab-expenses', JSON.stringify(expenses)); }, [expenses]);
 
   const syncToSupabase = async (table: string, data: any, action: 'upsert' | 'delete') => {
     if (!isSupabaseEnabled || isImporting.current) return;
@@ -604,6 +615,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
      syncToSupabase('day_events', { id }, 'delete');
   }, []);
 
+  const upsertExpense = useCallback((expense: Expense) => {
+     setExpenses(prev => {
+        const idx = prev.findIndex(e => e.id === expense.id);
+        const now = Date.now();
+        const updated = { ...expense, createdAt: expense.createdAt || now, updatedAt: now };
+        if (idx >= 0) {
+           const next = [...prev];
+           next[idx] = updated;
+           return next;
+        }
+        return [...prev, updated];
+     });
+     syncToSupabase('expenses', { ...expense, updatedAt: Date.now() }, 'upsert');
+  }, []);
+
+  const deleteExpense = useCallback((id: string) => {
+     setExpenses(prev => prev.filter(e => e.id !== id));
+     syncToSupabase('expenses', { id }, 'delete');
+  }, []);
+
   const uploadFile = useCallback(async (bucket: string, file: File): Promise<string | null> => {
     if (!isSupabaseEnabled) {
        return new Promise((resolve) => {
@@ -640,6 +671,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const rawSessions = data.sessions || data.trainingSessions || data.training_sessions || [];
     const rawEvents = data.dayEvents || data.day_events || [];
     const rawLogs = data.logs || data.sessionLogs || data.session_logs || [];
+    const rawExpenses = data.expenses || [];
 
     // Prepare fresh datasets
     const nextDrills = (data.drills || []).map((d: any) => ({ ...normalizeDrill(d), updatedAt: stamp }));
@@ -653,6 +685,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const nextLogs = rawLogs.map((l: any) => ({ ...l, updatedAt: stamp }));
     const nextTerms = (data.terms || []).map((t: any) => ({ ...t, updatedAt: stamp }));
     const nextDayEvents = rawEvents.map((e: any) => ({ ...e, updatedAt: stamp }));
+    const nextExpenses = rawExpenses.map((e: any) => ({ ...e, updatedAt: stamp }));
 
     // SANITIZATION: Remove dangling client references from players
     const clientIds = new Set(nextClients.map((c: any) => c.id));
@@ -675,6 +708,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setLogs(nextLogs);
     setTerms(nextTerms);
     setDayEvents(nextDayEvents);
+    setExpenses(nextExpenses);
 
     // Update Cache
     stateRef.current = {
@@ -688,7 +722,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         locations: nextLocations,
         logs: nextLogs,
         terms: nextTerms,
-        dayEvents: nextDayEvents
+        dayEvents: nextDayEvents,
+        expenses: nextExpenses
     };
 
     // Force an immediate upload
@@ -702,11 +737,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     <DataContext.Provider value={{
       drills, setDrills, templates, setTemplates, sequences, setSequences, plans, setPlans,
       players, setPlayers, clients, setClients, sessions, setSessions, locations, setLocations,
-      logs, setLogs, terms, setTerms, dayEvents, setDayEvents,
+      logs, setLogs, terms, setTerms, dayEvents, setDayEvents, expenses, setExpenses,
       addDrill, updateDrill, deleteDrill, addTemplate, updateTemplate, deleteTemplate,
       addSequence, updateSequence, deleteSequence, addPlan, updatePlan, deletePlan,
       addPlayer, updatePlayer, deletePlayer, upsertClient, deleteClient, mergeClients, upsertSession, deleteSession, upsertLog,
-      upsertDayEvent, deleteDayEvent, uploadFile, forceSync, importData
+      upsertDayEvent, deleteDayEvent, upsertExpense, deleteExpense, uploadFile, forceSync, importData
     }}>
       {children}
     </DataContext.Provider>

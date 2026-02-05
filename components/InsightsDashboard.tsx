@@ -1,19 +1,21 @@
 import React, { useMemo, useState } from 'react';
-import { Player, TrainingSession } from '@/lib/playbook';
+import { Player, TrainingSession, Client, Expense } from '@/lib/playbook';
 import { calculateDashboardStats, getRevenueChartData, getHeatmapData, getClientHealth, DashboardStats } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
-import { Activity, TrendingUp, TrendingDown, Users, Calendar, AlertTriangle, CheckCircle, BarChart3, PieChart, Clock, Zap, Heart } from 'lucide-react';
+import { Activity, TrendingUp, TrendingDown, Users, Calendar, AlertTriangle, CheckCircle, BarChart3, PieChart, Clock, Zap, Heart, Wallet } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface InsightsDashboardProps {
   players: Player[];
   sessions: TrainingSession[];
+  clients: Client[];
+  expenses: Expense[];
 }
 
-export function InsightsDashboard({ players, sessions }: InsightsDashboardProps) {
+export function InsightsDashboard({ players, sessions, clients, expenses }: InsightsDashboardProps) {
   const [chartPeriod, setChartPeriod] = useState<'week'|'month'|'year'>('month');
   
-  const stats = useMemo(() => calculateDashboardStats(players, sessions), [players, sessions]);
+  const stats = useMemo(() => calculateDashboardStats(players, sessions, clients, expenses), [players, sessions, clients, expenses]);
   const chartData = useMemo(() => getRevenueChartData(sessions, chartPeriod), [sessions, chartPeriod]);
   const heatmapData = useMemo(() => getHeatmapData(sessions), [sessions]);
   const clientHealth = useMemo(() => getClientHealth(players, sessions), [players, sessions]);
@@ -52,6 +54,7 @@ export function InsightsDashboard({ players, sessions }: InsightsDashboardProps)
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
          <RevenueCard stats={stats} />
+         <CashFlowCard stats={stats} />
          <StatCard 
             title="Total Sessions" 
             value={stats.totalSessions.toString()} 
@@ -68,14 +71,6 @@ export function InsightsDashboard({ players, sessions }: InsightsDashboardProps)
             color="purple"
             delay={200}
             subtext={`+${stats.clientGrowth} this month`}
-         />
-         <StatCard 
-            title="Avg. Per Session" 
-            value={`R${stats.avgPerSession}`} 
-            icon={<BarChart3 className="w-5 h-5 text-amber-400" />}
-            color="amber"
-            delay={300}
-            subtext={`${stats.mostPopularType} most frequent`}
          />
       </div>
 
@@ -294,6 +289,36 @@ function RevenueCard({ stats }: { stats: DashboardStats }) {
          </div>
       </div>
    );
+}
+
+function CashFlowCard({ stats }: { stats: DashboardStats }) {
+   const isPositive = stats.netCashFlow >= 0;
+   return (
+      <div className="p-6 rounded-2xl bg-card/40 backdrop-blur border border-white/5 shadow-lg relative overflow-hidden group h-[160px] flex flex-col">
+         <div className="flex justify-between items-start mb-2 relative z-10 shrink-0">
+            <div>
+               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Cash Flow (YTD)</p>
+               <h3 className={cn("text-2xl font-black mt-1 tracking-tight", isPositive ? "text-emerald-400" : "text-rose-400")}>
+                  R{stats.netCashFlow.toLocaleString()}
+               </h3>
+            </div>
+            <div className={cn("p-2 rounded-xl ring-1", isPositive ? "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20" : "bg-rose-500/10 text-rose-400 ring-rose-500/20")}>
+               <Wallet className="w-5 h-5" />
+            </div>
+         </div>
+         
+         <div className="relative z-10 flex-1 flex flex-col justify-center space-y-1">
+            <div className="flex justify-between items-center text-xs">
+               <span className="text-muted-foreground font-bold uppercase tracking-wider">Collected</span>
+               <span className="font-mono font-bold text-emerald-400">+R{stats.totalCashCollected.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+               <span className="text-muted-foreground font-bold uppercase tracking-wider">Expenses</span>
+               <span className="font-mono font-bold text-rose-400">-R{stats.totalExpenses.toLocaleString()}</span>
+            </div>
+         </div>
+      </div>
+   )
 }
 
 function StatCard({ title, value, trend, icon, color, delay, subtext }: any) {

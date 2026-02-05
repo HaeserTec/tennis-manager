@@ -231,7 +231,9 @@ export function calculateDrillStats(drills: Drill[], categories: { id: string }[
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-export function calculateDashboardStats(players: Player[], sessions: TrainingSession[]): DashboardStats {
+// ... imports remain same ...
+
+export function calculateDashboardStats(players: Player[], sessions: TrainingSession[], clients: Client[] = [], expenses: Expense[] = []): DashboardStats {
   let totalRevenue = 0;
   let realizedRevenue = 0;
   let projectedRevenue = 0;
@@ -248,6 +250,7 @@ export function calculateDashboardStats(players: Player[], sessions: TrainingSes
   const offset = now.getTimezoneOffset() * 60000;
   const localNow = new Date(now.getTime() - offset);
   const todayStr = localNow.toISOString().split('T')[0];
+  const startOfYear = new Date(localNow.getFullYear(), 0, 1).toISOString().split('T')[0];
   
   // Calculate End of Current Month (Local)
   const endOfMonthDate = new Date(localNow.getFullYear(), localNow.getMonth() + 1, 0);
@@ -310,6 +313,24 @@ export function calculateDashboardStats(players: Player[], sessions: TrainingSes
      }
   });
 
+  // Calculate Cash Flow (YTD)
+  let totalCashCollected = 0;
+  clients.forEach(c => {
+     (c.payments || []).forEach(p => {
+        if (p.date >= startOfYear) {
+           totalCashCollected += p.amount;
+        }
+     });
+  });
+
+  // Sum expenses
+  let totalExpenses = 0;
+  expenses.forEach(e => {
+     if (e.date >= startOfYear) {
+        totalExpenses += e.amount;
+     }
+  });
+
   return {
     totalRevenue,
     realizedRevenue,
@@ -322,7 +343,10 @@ export function calculateDashboardStats(players: Player[], sessions: TrainingSes
     activeClients: activeClientIds.size,
     clientGrowth: activeClientIds.size,
     avgPerSession: totalSessions > 0 ? Math.round(totalRevenue / totalSessions) : 0,
-    mostPopularType
+    mostPopularType,
+    totalCashCollected,
+    totalExpenses,
+    netCashFlow: totalCashCollected - totalExpenses
   };
 }
 
