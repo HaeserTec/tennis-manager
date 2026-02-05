@@ -49,7 +49,8 @@ A centralized operational engine for the professional traveling coach.
 - **Weekly Planner:** A visual timeline for managing multi-location daily schedules. Supports "Week at a Glance" view and location-specific filtering.
 - **Client Billing:** Automated "Statement of Account" generation. Analyzes attendance history against scheduled rates to produce professional digital receipts.
 - **Payment Ledger:** Centralized "Ledger" tab for tracking all incoming payments in one sortable list, with a quick-add modal for rapid logging.
-- **Financial Performance:** Interactive dashboard with Realized vs. Projected revenue splits and location-based breakdowns.
+- **Expense Tracker:** Dedicated "Expenses" tab to log operational costs (equipment, court hire, etc.).
+- **Financial Performance:** Interactive dashboard with Realized vs. Projected revenue, Location breakdowns, and Net Cash Flow (Collected vs. Expenses).
 - **Directory:** Rapid access to player profiles, parent contacts, and critical medical alerts.
 - **WhatsApp Integration:** One-click copy for professional billing communication via text/mobile.
 

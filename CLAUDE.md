@@ -38,7 +38,7 @@ The app uses a single-page architecture with mode-based navigation:
 | Component | Purpose |
 |-----------|---------|
 | `PlaybookDiagramV2.tsx` | 2D tennis court canvas editor (largest component, ~3000 lines) |
-| `AcademyOffice.tsx` | Scheduling, billing, weekly planner, payment ledger |
+| `AcademyOffice.tsx` | Scheduling, billing, weekly planner, payment ledger, expense tracker |
 | `LockerRoom.tsx` | Player roster and profile management |
 | `ClientDashboard.tsx` | Parent/client account management |
 | `DrillLibrary.tsx` | Drill browser with categories and search |

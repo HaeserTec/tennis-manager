@@ -210,6 +210,16 @@ const STORAGE_KEYS = {
   - **Centralized View:** Added a dedicated "Ledger" tab to the Office.
   - **Global History:** Flat list of all payments across all clients, sortable by date.
   - **Quick Add:** Streamlined "Record Payment" modal with Client Name display (fixed UI bug) and search.
+
+  ### F.4 Expense Tracker ✅
+  - **New Module:** Dedicated "Expenses" tab for managing operational costs.
+  - **Categorization:** Support for categories like Equipment, Court Hire, Travel, Salary, Marketing.
+  - **Data Persistence:** Full CRUD support with `localStorage` and sync capability.
+
+  ### F.5 Cash Flow Intelligence ✅
+  - **Dashboard Upgrade:** Added a "Cash Flow (YTD)" KPI card.
+  - **Real-Time Net:** Displays `Total Collected - Total Expenses` for instant bank balance verification.
+  - **Zero-Balance Fix:** Corrected data prop drilling to ensure dashboard receives live financial data.
   
   ---
   
