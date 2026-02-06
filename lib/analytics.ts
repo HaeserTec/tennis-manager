@@ -1,4 +1,4 @@
-import { Player, SessionLog, ProgressGoal, ProgressMetric, Drill, TrainingSession } from './playbook';
+import { Player, SessionLog, ProgressGoal, ProgressMetric, Drill, TrainingSession, Client, Expense } from './playbook';
 
 export interface ScoreData {
   tech: number;
@@ -25,6 +25,9 @@ export type DashboardStats = {
   clientGrowth: number;
   avgPerSession: number;
   mostPopularType: string;
+  totalCashCollected: number;
+  totalExpenses: number;
+  netCashFlow: number;
 };
 
 export type ChartData = {

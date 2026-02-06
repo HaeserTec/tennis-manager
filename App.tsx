@@ -16,6 +16,7 @@ import { NavigationRail, AppMode } from '@/components/NavigationRail';
 import { MobileFAB } from '@/components/MobileFAB';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { DrillLibrary } from '@/components/DrillLibrary';
+import { DrillStudio } from '@/components/DrillStudio';
 import { ClientDashboard } from '@/components/ClientDashboard';
 import { LandingScreen } from '@/components/LandingScreen';
 import { useData } from '@/lib/data-provider';
@@ -820,7 +821,7 @@ export default function App() {
       </div>
 
       {/* List Panel (The "New" Sidebar) */}
-      {!isHome && appMode !== 'players' && appMode !== 'office' && appMode !== 'scoreboard' && appMode !== 'library' && (
+      {!isHome && appMode !== 'players' && appMode !== 'office' && appMode !== 'scoreboard' && appMode !== 'library' && appMode !== 'standard' && appMode !== 'templates' && (
          <div
             ref={listPanelRef}
             style={{ '--list-panel-width': `${listPanelWidth}px` } as React.CSSProperties}
@@ -1197,7 +1198,7 @@ export default function App() {
       {/* Main Content */}
       <div className={cn(
          "flex-1 flex flex-col min-w-0 bg-background relative",
-         !hasSelection && !isHome && appMode !== 'players' && appMode !== 'office' && appMode !== 'scoreboard' && appMode !== 'library' ? "hidden lg:flex" : "flex"
+         !hasSelection && !isHome && appMode !== 'players' && appMode !== 'office' && appMode !== 'scoreboard' && appMode !== 'library' && appMode !== 'standard' && appMode !== 'templates' ? "hidden lg:flex" : "flex"
       )}>
          {isHome ? (
             <HomeDashboard 
@@ -1226,6 +1227,7 @@ export default function App() {
          ) : appMode === 'office' ? (
              <AcademyOffice
                 players={players}
+                drills={drills}
                 locations={locations}
                 clients={clients}
                 sessions={sessions}
@@ -1302,6 +1304,19 @@ export default function App() {
                    handleNavigate('standard');
                    handleSelectDrill(drill);
                 }}
+             />
+          ) : appMode === 'standard' || appMode === 'templates' ? (
+             <DrillStudio 
+                drills={drills}
+                templates={templates}
+                onAddDrill={addDrill}
+                onUpdateDrill={updateDrill}
+                onDeleteDrill={deleteDrill}
+                onAddTemplate={addTemplate}
+                onUpdateTemplate={updateTemplate}
+                onDeleteTemplate={deleteTemplate}
+                onNavigateHome={handleGoHome}
+                initialMode={appMode === 'templates' ? 'templates' : 'drills'}
              />
           ) : (
             // Drill / Template / Sequence Editor

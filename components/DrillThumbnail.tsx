@@ -42,7 +42,7 @@ interface DrillThumbnailProps {
   height?: number | string;
   className?: string;
   style?: React.CSSProperties;
-  variant?: 'default' | 'print';
+  variant?: 'default' | 'print' | 'compact';
 }
 
 const BASE_WIDTH = 1320;

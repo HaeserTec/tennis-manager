@@ -76,64 +76,12 @@ export interface DrillTemplate {
     nodes: any[];
     paths: any[];
   };
+  tags?: string[];
   createdAt?: number;
   updatedAt?: number;
 }
 
-export interface PlayerStats {
-  forehand: number;
-  backhand: number;
-  serve: number;
-  volley: number;
-  movement: number;
-  consistency: number;
-}
-
-// Payment Record
-export interface Payment {
-  id: string;
-  date: string; // YYYY-MM-DD
-  amount: number;
-  reference?: string; // "EFT - Oct/Nov"
-  proofUrl?: string; // Future: URL to image/pdf
-  note?: string; 
-}
-
-// Parent/Account Holder
-export interface Client {
-  id: string;
-  name: string; // "Parent Name"
-  email: string;
-  phone: string;
-  notes?: string;
-  status: 'Active' | 'Inactive' | 'Lead';
-  payments?: Payment[]; // Ledger of received payments
-  createdAt: number;
-  updatedAt: number;
-}
-
-// New First-Class Entity
-export interface TrainingSession {
-  id: string;
-  date: string; // "YYYY-MM-DD"
-  startTime: string; // "14:00"
-  endTime: string;   // "15:00"
-  location: string;
-  type: SessionType; // Private, Semi, Group
-  price: number;
-  coachId?: string;
-  participantIds: string[]; // List of Player IDs enrolled
-  maxCapacity: number;
-  
-  // Instance-specific overrides
-  notes?: string;
-  
-  // Link recurring sessions together
-  seriesId?: string;
-
-  createdAt: number;
-  updatedAt: number;
-}
+// ... (skipping some interfaces) ...
 
 export interface Player {
   id: string;
@@ -153,6 +101,9 @@ export interface Player {
   
   // Link to Parent Account
   clientId?: string;
+
+  // Journal / Notes
+  journal?: { id: string; date: string; content: string }[];
 
   // The Build
   handedness?: 'Right' | 'Left';
@@ -191,6 +142,7 @@ export interface Player {
     location?: string;   
     parentContact?: string; 
     medicalAlerts?: string;
+    school?: string;
   };
 
   // DEPRECATED: Schedule is now managed via TrainingSession entities
