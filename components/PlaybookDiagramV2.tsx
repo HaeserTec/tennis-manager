@@ -22,6 +22,27 @@ import { cn } from "@/lib/utils";
 import { RadialMenu } from "@/components/RadialMenu";
 import { User, Circle, Triangle, ArrowUpRight, Undo2, Trash2, X } from "lucide-react";
 
+// --- Place after imports ---
+function getSide(p: {x: number, y: number}, width: number, height: number, orientation: 'landscape' | 'portrait') { 
+  if (orientation === 'landscape') {
+     return p.x < width / 2 ? "left" : "right";
+  }
+  return p.y < height / 2 ? "top" : "bottom";
+}
+
+function crossesNet(points: {x: number, y: number}[], width: number, height: number, orientation: 'landscape' | 'portrait') {
+  if (points.length < 2) return false;
+  const s = getSide(points[0], width, height, orientation);
+  const e = getSide(points[points.length - 1], width, height, orientation);
+  return s !== e;
+}
+
+function getEndSide(points: {x: number, y: number}[], width: number, height: number, orientation: 'landscape' | 'portrait') { 
+  return getSide(points[points.length - 1], width, height, orientation);
+}
+
+function easeOut(t: number) { return 1 - Math.pow(1 - t, 2.5); }
+
 type NodeType =
   | "coach"
   | "player"
@@ -226,6 +247,66 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
   const [state, setState] = React.useState<DiagramState>({ nodes: [], paths: [] });
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
+
+  // --- Place after state declarations ---
+  const hasCoach = React.useMemo(() => state.nodes.some(n => n.type === "coach"), [state.nodes]);
+
+  const steps = React.useMemo(() => {
+    const sorted = [...state.paths].sort((a, b) => (a.order || 0) - (b.order || 0));
+    const result = [];
+    let i = 0;
+
+    // Helper to check what an arrow starts closest to
+    const startsNearBall = (path: DiagramPath) => {
+        const start = path.points[0];
+        if (!start) return false;
+        
+        let minBallDist = Infinity;
+        let minPlayerDist = Infinity;
+
+        state.nodes.forEach(n => {
+            const d = (n.x - start.x)**2 + (n.y - start.y)**2;
+            if (n.type === 'ball') minBallDist = Math.min(minBallDist, d);
+            if (n.type === 'player' || n.type === 'coach') minPlayerDist = Math.min(minPlayerDist, d);
+        });
+
+        // If closer to ball than player/coach, treat as ball movement
+        // Add a bias: Players are larger, so if distances are somewhat equal, prefer player movement
+        return minBallDist < minPlayerDist; 
+    };
+
+    while (i < sorted.length) {
+      const cur = sorted[i];
+      const nxt = sorted[i + 1];
+      
+      const curCrosses = crossesNet(cur.points, VB_WIDTH, VB_HEIGHT, orientation);
+      const nxtIsPlayer = nxt && !crossesNet(nxt.points, VB_WIDTH, VB_HEIGHT, orientation); // Next is definitely same-side
+
+      // It is a ball if it crosses the net OR if it starts closer to a ball node
+      const curIsBall = curCrosses || startsNearBall(cur);
+
+      if (curIsBall && nxtIsPlayer) {
+        if (hasCoach) {
+          // Coach mode: ALL ball arrows pair with next player arrow
+          result.push({ type: "paired", ballPath: cur, playerPath: nxt, ids: [cur.id, nxt.id] });
+          i += 2; continue;
+        } else {
+          // Player vs player: only pair if player is on the receiving side
+          const ballLands = getEndSide(cur.points, VB_WIDTH, VB_HEIGHT, orientation);
+          const playerSide = getSide(nxt.points[0], VB_WIDTH, VB_HEIGHT, orientation);
+          
+          // Only pair if the ball actually goes to where the player is
+          if (ballLands === playerSide) {
+            result.push({ type: "paired", ballPath: cur, playerPath: nxt, ids: [cur.id, nxt.id] });
+            i += 2; continue;
+          }
+        }
+      }
+      result.push({ type: curIsBall ? "ball" : "player", path: cur, ids: [cur.id] });
+      i++;
+    }
+    return result;
+  }, [state.paths, state.nodes, hasCoach, VB_WIDTH, VB_HEIGHT, orientation]);
   
   const primarySelectedId = selectedIds[0] ?? null;
   const primaryNode = primarySelectedId ? state.nodes.find((n) => n.id === primarySelectedId) ?? null : null;
@@ -366,42 +447,50 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     };
   }, [isPlaying, state.nodes, state.paths]);
 
-  // Animation Loop
+  // --- New Animation State ---
+  const [currentStepIdx, setCurrentStepIdx] = React.useState(-1);
+  const [stepProgress, setStepProgress] = React.useState(0);
+  const animRef = React.useRef<number | null>(null);
+
+  // --- Replace your old animation useEffect with this ---
   React.useEffect(() => {
-    if (!isPlaying) {
-      setAnimProgress(0);
-      if (animReqRef.current) {
-        cancelAnimationFrame(animReqRef.current);
-        animReqRef.current = null;
-      }
+    if (!isPlaying || steps.length === 0) {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
       return;
     }
 
-    let start: number | null = null;
-    
-    // Dynamic Duration: 2s per "Step" (Player+Ball pair), min 4s
-    const players = state.nodes.filter(n => n.type === 'player');
-    const balls = state.nodes.filter(n => n.type === 'ball');
-    const maxSteps = Math.max(1, players.length, balls.length);
-    const DURATION = Math.max(4000, maxSteps * 2000); 
-    
-    const PAUSE = 1000; // 1s pause at end
+    const STEP_DUR = 1000; // 1 second per tactical phase
+    const PAUSE = 200;
+    let stepIdx = 0;
+    let phaseStart: number | null = null;
 
-    const animate = (time: number) => {
-      if (!start) start = time;
-      const elapsed = time - start;
-      const totalCycle = DURATION + PAUSE;
-      const t = (elapsed % totalCycle) / DURATION;
-      
-      setAnimProgress(Math.min(1, t));
-      animReqRef.current = requestAnimationFrame(animate);
+    const tick = (time: number) => {
+      if (phaseStart === null) phaseStart = time;
+      const elapsed = time - phaseStart;
+
+      if (elapsed < STEP_DUR) {
+        setCurrentStepIdx(stepIdx);
+        setStepProgress(elapsed / STEP_DUR);
+      } else if (elapsed < STEP_DUR + PAUSE) {
+        setStepProgress(1);
+      } else {
+        if (stepIdx < steps.length - 1) {
+          stepIdx++;
+          phaseStart = time;
+          setCurrentStepIdx(stepIdx);
+          setStepProgress(0);
+        } else {
+          // Loop back to start
+          stepIdx = 0;
+          phaseStart = time;
+        }
+      }
+      animRef.current = requestAnimationFrame(tick);
     };
 
-    animReqRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (animReqRef.current) cancelAnimationFrame(animReqRef.current);
-    };
-  }, [isPlaying, state.nodes]);
+    animRef.current = requestAnimationFrame(tick);
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [isPlaying, steps]);
 
   // Synchronized Path Progress Helper
   const getSyncedPathProgress = (pathId: string): number => {
@@ -979,10 +1068,9 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     };
 
     if (type === "player") {
-      const playerNodes = state.nodes.filter(n => n.type === 'player');
-      if (playerNodes.length === 0) {
-          setAutoFlowState('waitingForBall');
-      }
+      // Always trigger auto-flow for ball placement after placing a player
+      setAutoFlowState('waitingForBall');
+      
       let nextNodes = [...state.nodes, node];
       nextNodes = renumberPlayers(nextNodes);
       commit({ ...state, nodes: nextNodes });
@@ -1943,6 +2031,64 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
       window.removeEventListener("playbook:diagram:clear", clearHandler);
     };
   }, []);
+
+  // --- Place before the return statement ---
+  const animatedNodes = React.useMemo(() => {
+    if (!isPlaying || currentStepIdx < 0) return state.nodes;
+
+    const positions = new Map();
+    const players = state.nodes.filter(n => n.type === 'player');
+    const balls = state.nodes.filter(n => n.type === 'ball');
+
+    // Helper to find nearest node of a specific group to a point
+    const findNearest = (nodes: DiagramNode[], point: {x: number, y: number}) => {
+        let nearest = null;
+        let minD = Infinity;
+        for (const node of nodes) {
+            // Use current position if available (for chained movements)
+            const curr = positions.get(node.id) || { x: node.x, y: node.y };
+            const d = Math.pow(curr.x - point.x, 2) + Math.pow(curr.y - point.y, 2);
+            if (d < minD) { minD = d; nearest = node; }
+        }
+        return nearest;
+    };
+
+    // Calculate position for every step up to the current one
+    for (let sIdx = 0; sIdx <= currentStepIdx; sIdx++) {
+      const step = steps[sIdx];
+      const t = (sIdx === currentStepIdx) ? stepProgress : 1;
+      
+      const animations: { path: DiagramPath, type: 'player' | 'ball', t: number }[] = [];
+
+      if (step.type === "paired") {
+          // Ball moves (Crosses net)
+          animations.push({ path: step.ballPath, type: 'ball', t });
+          // Player moves (Same side)
+          animations.push({ path: step.playerPath, type: 'player', t });
+      } else if (step.type === "ball") {
+          animations.push({ path: step.path, type: 'ball', t });
+      } else if (step.type === "player") {
+          animations.push({ path: step.path, type: 'player', t });
+      }
+
+      for (const anim of animations) {
+         const group = anim.type === 'ball' ? balls : players;
+         const startPoint = anim.path.points[0];
+         
+         const targetNode = findNearest(group, startPoint);
+         
+         if (targetNode) {
+             const pos = anim.path.pathType === 'curve' && anim.path.points.length === 3
+                ? getBezierPoint(easeOut(anim.t), anim.path.points[0], anim.path.points[1], anim.path.points[2])
+                : getPolylinePoint(easeOut(anim.t), anim.path.points);
+             
+             positions.set(targetNode.id, pos);
+         }
+      }
+    }
+
+    return state.nodes.map(n => positions.get(n.id) ? { ...n, ...positions.get(n.id) } : n);
+  }, [isPlaying, currentStepIdx, stepProgress, steps, state.nodes]);
 
   if (isBackground) {
     return (
@@ -2914,138 +3060,7 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
               })}
             
             {/* Animated Nodes Calculation */}
-            {(() => {
-               // 1. Identify Chains
-               const pathChains = new Map<string, string>();
-               state.paths.forEach(p1 => {
-                  const end = p1.points[p1.points.length - 1];
-                  if (!end) return;
-                  const nextPath = state.paths.find(p2 => {
-                     if (p1.id === p2.id) return false;
-                     const start = p2.points[0];
-                     if (!start) return false;
-                     const dx = start.x - end.x;
-                     const dy = start.y - end.y;
-                     return (dx*dx + dy*dy) < 1600;
-                  });
-                  if (nextPath) pathChains.set(p1.id, nextPath.id);
-               });
-
-               // 2. Interleaved Animation Sequence (Player 1 -> Ball 1 -> Player 2 -> Ball 2 ...)
-               const players = state.nodes.filter(n => n.type === 'player').sort((a,b) => (parseInt(a.label||'0') - parseInt(b.label||'0')));
-               const balls = state.nodes.filter(n => n.type === 'ball').sort((a,b) => (parseInt(a.label||'0') - parseInt(b.label||'0')));
-               
-               const maxSteps = Math.max(players.length, balls.length);
-               const stepDuration = 1 / Math.max(1, maxSteps);
-
-               const renderNodes = state.nodes.map(n => {
-                  if (!isPlaying || animProgress === 0) return n;
-
-                  const isBall = n.type === 'ball';
-                  const isPlayer = n.type === 'player';
-                  const isCoach = n.type === 'coach'; // Coaches animate with Step 0 (Player 1) or independent? Let's bind to Step 0 for now.
-
-                  if (!isBall && !isPlayer && !isCoach) return n;
-
-                  // Determine Step Index
-                  let stepIndex = 0;
-                  if (isPlayer) stepIndex = Math.max(0, parseInt(n.label || '1') - 1);
-                  else if (isBall) stepIndex = Math.max(0, parseInt(n.label || '1') - 1);
-                  else if (isCoach) stepIndex = 0; // Coach moves with first group
-
-                  // Calculate Step Time Window
-                  const stepStart = stepIndex * stepDuration;
-                  const stepEnd = stepStart + stepDuration;
-
-                  // If we are not in this step yet, stay at start. If past, stay at end.
-                  if (animProgress < stepStart) return n; // Not started yet (render at origin)
-                  
-                  // Local Progress within this Step (0-1)
-                  let localStepProgress = (Math.min(animProgress, stepEnd) - stepStart) / stepDuration;
-                  if (animProgress >= stepEnd) localStepProgress = 1;
-
-                  // Logic: Player moves 0.0-0.5, Ball moves 0.5-1.0
-                  // EXCEPT: If corresponding partner is missing path, take full slot? 
-                  // Simplified Requirement: Player 1 MUST move before Ball 1.
-                  
-                  // Check if this node has a path
-                  const primaryPath = state.paths.find(p => {
-                      // Link path to node (proximity check at start)
-                      const s = p.points[0];
-                      return s && (s.x - n.x)**2 + (s.y - n.y)**2 < 1600;
-                  });
-
-                  if (!primaryPath) return n; // No path, no movement
-
-                  // Check if partner has path to determine split
-                  let movesFirst = isPlayer || isCoach; 
-                  let myWindowStart = 0;
-                  let myWindowEnd = 1;
-
-                  if (isPlayer || isCoach) {
-                     // I am Player N. Does Ball N exist and have a path?
-                     const partnerBall = balls[stepIndex];
-                     const ballHasPath = partnerBall && state.paths.some(p => {
-                        const s = p.points[0];
-                        return s && (s.x - partnerBall.x)**2 + (s.y - partnerBall.y)**2 < 1600;
-                     });
-                     
-                     if (ballHasPath) {
-                        myWindowStart = 0;
-                        myWindowEnd = 0.5;
-                     } else {
-                        myWindowStart = 0;
-                        myWindowEnd = 1;
-                     }
-                  } else if (isBall) {
-                     // I am Ball N. Does Player N exist and have a path?
-                     const partnerPlayer = players[stepIndex];
-                     const playerHasPath = partnerPlayer && state.paths.some(p => {
-                        const s = p.points[0];
-                        return s && (s.x - partnerPlayer.x)**2 + (s.y - partnerPlayer.y)**2 < 1600;
-                     });
-
-                     if (playerHasPath) {
-                        myWindowStart = 0.5;
-                        myWindowEnd = 1;
-                     } else {
-                        myWindowStart = 0;
-                        myWindowEnd = 1;
-                     }
-                  }
-
-                  // Map localStepProgress to myWindow
-                  let moveProgress = 0;
-                  if (localStepProgress < myWindowStart) moveProgress = 0;
-                  else if (localStepProgress > myWindowEnd) moveProgress = 1;
-                  else moveProgress = (localStepProgress - myWindowStart) / (myWindowEnd - myWindowStart);
-
-                  // Calculate Position
-                  const secondaryPathId = pathChains.get(primaryPath.id);
-                  const secondaryPath = secondaryPathId ? state.paths.find(p => p.id === secondaryPathId) : null;
-
-                  let activePath = primaryPath;
-                  let t = moveProgress;
-
-                  if (secondaryPath) {
-                     // Split movement across chained paths
-                     if (moveProgress <= 0.5) {
-                        activePath = primaryPath;
-                        t = moveProgress * 2;
-                     } else {
-                        activePath = secondaryPath;
-                        t = (moveProgress - 0.5) * 2;
-                     }
-                  }
-
-                  const pos = activePath.pathType === 'curve' && activePath.points.length === 3
-                      ? getBezierPoint(t, activePath.points[0], activePath.points[1], activePath.points[2])
-                      : getPolylinePoint(t, activePath.points);
-                  
-                  return { ...n, x: pos.x, y: pos.y };
-               });
-
-               return renderNodes.filter((n) => n.type !== "targetLine").map((n) => (
+            {animatedNodes.filter((n) => n.type !== "targetLine").map((n) => (
               <g
                 key={n.id}
                 transform={`translate(${n.x},${n.y}) rotate(${n.r})`}
@@ -3166,10 +3181,24 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                   <circle r={n.type === 'ladder' ? 75 : 42} fill="none" stroke="hsl(var(--primary))" strokeWidth={2} strokeDasharray="6 4" opacity={0.6} aria-hidden="true" />
                 ) : null}
               </g>
-            ));
-            })()}
+            ))}
           </svg>
       </CardContent>
+      {/* --- Place after </CardContent> --- */}
+      {steps.length > 0 && (
+        <div className="flex items-center gap-2 p-3 overflow-x-auto bg-white/[0.02] border-t border-white/5">
+          {steps.map((step, idx) => (
+            <div key={idx} className={cn(
+              "flex items-center gap-1.5 p-1.5 px-3 rounded-xl border transition-all",
+              idx === currentStepIdx ? "bg-primary/20 border-primary/40 scale-105" : "bg-white/5 border-white/5 opacity-40"
+            )}>
+              <span className="text-[10px] font-bold text-white/80">
+                {step.type === "paired" ? `${step.ballPath.order}+${step.playerPath.order}` : (step.path.order || idx + 1)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       {/* Mobile Toolbar */}
       <div className="md:hidden border-t border-border bg-card p-2 grid grid-cols-6 gap-1 shrink-0 z-20 pb-6 safe-area-bottom">
          <Button variant="ghost" size="icon" className="h-12 w-full rounded-xl bg-card border border-border" onClick={() => addNode('player')}><User className="w-6 h-6 text-blue-500" /></Button>
