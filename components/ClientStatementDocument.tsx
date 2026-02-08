@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { Client, Player, TrainingSession, Payment } from '@/lib/playbook';
 
@@ -10,6 +10,8 @@ interface ClientStatementDocumentProps {
 }
 
 export function ClientStatementDocument({ client, players, sessions, onClose }: ClientStatementDocumentProps) {
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  
   const clientKids = useMemo(() => players.filter(p => p.clientId === client.id), [players, client.id]);
 
   const statementData = useMemo(() => {
@@ -21,13 +23,13 @@ export function ClientStatementDocument({ client, players, sessions, onClose }: 
       s.participantIds.some(pid => playerIds.has(pid))
     );
 
-    // 3. Create Transaction Items
-    const transactions: { date: string; desc: string; debit: number; credit: number; timestamp: number; type: 'fee' | 'payment' }[] = [];
+    // 3. Create ALL Transaction Items first
+    const allTransactions: { date: string; desc: string; debit: number; credit: number; timestamp: number; type: 'fee' | 'payment' | 'balance' }[] = [];
 
     // Add Payments
     if (client.payments) {
       client.payments.forEach(p => {
-        transactions.push({
+        allTransactions.push({
           date: p.date,
           desc: `Payment Received - ${p.reference || 'Thank you'}`,
           debit: 0,
@@ -52,7 +54,8 @@ export function ClientStatementDocument({ client, players, sessions, onClose }: 
            .filter(Boolean);
 
         let typeDisplay = s.type;
-                 if (s.type === 'Semi') typeDisplay = 'Semi';        if (s.type === 'Group') typeDisplay = 'Group'; 
+        if (s.type === 'Semi') typeDisplay = 'Semi';
+        if (s.type === 'Group') typeDisplay = 'Group'; 
         if (s.type === 'Private') typeDisplay = 'Private'; 
 
         // Correct suffix logic
@@ -61,7 +64,7 @@ export function ClientStatementDocument({ client, players, sessions, onClose }: 
         const timeRange = `${s.startTime} - ${s.endTime}`;
         const withOthers = others.length > 0 ? ` (with ${others.join(', ')})` : '';
         
-        transactions.push({
+        allTransactions.push({
           date: s.date,
           desc: `${typeLabel} (${timeRange}) - ${p?.name || 'Player'}${withOthers}`,
           debit: s.price || 0, 
@@ -73,28 +76,75 @@ export function ClientStatementDocument({ client, players, sessions, onClose }: 
     });
 
     // 4. Sort Chronologically
-    transactions.sort((a, b) => a.timestamp - b.timestamp);
+    allTransactions.sort((a, b) => a.timestamp - b.timestamp);
 
-    // 5. Calculate Running Balance
-    let balance = 0;
-    const rows = transactions.map(t => {
-      balance += (t.debit - t.credit);
-      return { ...t, balance };
+    // 5. Filter by Selected Month & Calculate Opening Balance
+    // selectedMonth is "YYYY-MM"
+    // We treat dates as string comparisons for simplicity and timezone safety "YYYY-MM-DD"
+    const startPrefix = selectedMonth;
+    
+    let openingBalance = 0;
+    const currentRows: typeof allTransactions = [];
+
+    allTransactions.forEach(t => {
+       // Check if transaction is BEFORE selected month
+       // String comparison: "2023-01-15" < "2023-02" is true
+       if (t.date < startPrefix + "-01") {
+          openingBalance += (t.debit - t.credit);
+       } 
+       // Check if transaction is IN selected month
+       else if (t.date.startsWith(startPrefix)) {
+          currentRows.push(t);
+       }
+       // Future transactions are ignored for the statement of this month
     });
 
-    return { rows, finalBalance: balance };
-  }, [client, players, sessions]);
+    // 6. Build Final Rows
+    let runningBalance = openingBalance;
+    const finalRows: typeof allTransactions = [];
+
+    // Always add B/F row
+    finalRows.push({
+       date: `${selectedMonth}-01`,
+       desc: "Balance Brought Forward",
+       debit: 0,
+       credit: 0,
+       timestamp: 0, // Irrelevant
+       balance: openingBalance,
+       type: 'balance'
+    } as any);
+
+    const rows = currentRows.map(t => {
+      runningBalance += (t.debit - t.credit);
+      return { ...t, balance: runningBalance };
+    });
+
+    return { rows: [...finalRows, ...rows], finalBalance: runningBalance };
+  }, [client, players, sessions, selectedMonth]);
 
   return (
     <div className="fixed inset-0 z-[100] bg-white text-black overflow-y-auto print:overflow-visible flex flex-col items-center p-8 print:p-0">
       {/* Print Controls (Hidden in Print) */}
       <div className="w-[210mm] mb-4 flex justify-between items-center no-print">
-        <button 
-           onClick={onClose}
-           className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-sm font-bold text-gray-800"
-        >
-           &larr; Back
-        </button>
+        <div className="flex gap-4 items-center">
+           <button 
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-sm font-bold text-gray-800"
+           >
+              &larr; Back
+           </button>
+           
+           <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg border border-gray-300">
+              <span className="text-xs font-bold text-gray-500 pl-2 uppercase tracking-wider">Statement Month:</span>
+              <input 
+                 type="month" 
+                 value={selectedMonth} 
+                 onChange={(e) => setSelectedMonth(e.target.value)}
+                 className="bg-white border border-gray-300 rounded px-2 py-1 text-sm font-bold"
+              />
+           </div>
+        </div>
+
         <div className="flex gap-2">
            <button 
               onClick={() => window.print()}
@@ -106,89 +156,97 @@ export function ClientStatementDocument({ client, players, sessions, onClose }: 
       </div>
 
       {/* A4 Sheet */}
-      <div className="w-[210mm] min-h-[297mm] bg-white shadow-2xl print:shadow-none p-[10mm] relative flex flex-col font-sans">
+      <div className="w-[210mm] min-h-[297mm] bg-white shadow-2xl print:shadow-none p-[15mm] print:p-[10mm] relative flex flex-col font-sans">
         
         {/* Header */}
-        <div className="flex justify-between items-start border-b-2 border-black pb-6 mb-6">
-           <div className="flex items-center gap-4">
+        <div className="flex justify-between items-start border-b-2 border-black pb-4 mb-4">
+           <div className="flex items-center gap-3">
               {/* Logo Placeholder */}
-              <div className="w-16 h-16 bg-black text-white flex items-center justify-center font-black text-2xl rounded-full">
+              <div className="w-12 h-12 bg-black text-white flex items-center justify-center font-black text-xl rounded-full">
                  TL
               </div>
               <div>
-                 <h1 className="text-3xl font-black uppercase tracking-tighter">VON GERICKE ACADEMY</h1>
-                 <p className="text-xs font-bold uppercase tracking-widest text-gray-500">High Performance Coaching</p>
+                 <h1 className="text-2xl font-black uppercase tracking-tighter">VON GERICKE ACADEMY</h1>
+                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">High Performance Coaching</p>
               </div>
            </div>
-           <div className="text-right text-xs leading-relaxed">
+           <div className="text-right text-[10px] leading-relaxed">
               <p className="font-bold">Date: {new Date().toLocaleDateString()}</p>
               <p>Pretoria, South Africa</p>
               <p>admin@tennislab.co.za</p>
            </div>
         </div>
 
-        {/* Banking Details (Moved Top) */}
-        <div className="mb-8 p-4 bg-gray-50 border border-gray-200 rounded-lg flex justify-between items-center print:bg-transparent print:border-gray-300">
+        {/* Banking Details (Compact) */}
+        <div className="mb-6 p-2.5 bg-gray-50 border border-gray-200 rounded-lg flex justify-between items-center print:bg-transparent print:border-gray-300">
            <div>
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Banking Details</h3>
-              <p className="font-bold text-sm">EBENHAESER VON GERICKE</p>
-              <p className="text-xs">FNB Savings Account: 62878455643</p>
-              <p className="text-xs">Branch: 250655</p>
+              <h3 className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-0.5">Banking Details</h3>
+              <p className="font-bold text-xs">EBENHAESER VON GERICKE</p>
+              <div className="flex gap-3 text-[10px] text-gray-700">
+                 <p>FNB Savings: <span className="font-mono">62878455643</span></p>
+                 <p>Branch: <span className="font-mono">250655</span></p>
+              </div>
            </div>
            <div className="text-right">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Reference</h3>
-              <p className="font-bold text-sm bg-black text-white px-2 py-1 rounded inline-block print:text-black print:border print:border-black print:bg-transparent">
-                 {clientKids.length > 0 ? clientKids[0].name.split(' ')[0] : client.name} - {new Date().toLocaleString('default', { month: 'short' })}
+              <h3 className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-0.5">Reference</h3>
+              <p className="font-bold text-xs bg-black text-white px-2 py-0.5 rounded inline-block print:text-black print:border print:border-black print:bg-transparent">
+                 {clientKids.length > 0 ? clientKids[0].name.split(' ')[0] : client.name} - {new Date(selectedMonth).toLocaleString('default', { month: 'short', year: '2-digit' })}
               </p>
            </div>
         </div>
 
         {/* Bill To */}
-        <div className="mb-8">
-           <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Statement For</h3>
-           <div className="text-2xl font-bold">{client.name}</div>
-           <div className="text-sm text-gray-600">{client.email}</div>
-           <div className="text-sm text-gray-600">{client.phone}</div>
+        <div className="mb-6">
+           <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Statement For</h3>
+           <div className="text-xl font-bold">{client.name}</div>
+           <div className="flex gap-4 text-xs text-gray-600">
+              <p>{client.email}</p>
+              <p>{client.phone}</p>
+           </div>
         </div>
 
         {/* Statement Table */}
-        <table className="w-full text-sm mb-8">
+        <table className="w-full text-xs mb-6">
            <thead>
               <tr className="border-b-2 border-black">
-                 <th className="py-2 text-left w-24 font-bold uppercase text-xs tracking-wider">Date</th>
-                 <th className="py-2 text-left font-bold uppercase text-xs tracking-wider">Description</th>
-                 <th className="py-2 text-right w-24 font-bold uppercase text-xs tracking-wider">Fee</th>
-                 <th className="py-2 text-right w-24 font-bold uppercase text-xs tracking-wider">Paid</th>
-                 <th className="py-2 text-right w-28 font-bold uppercase text-xs tracking-wider">Balance</th>
+                 <th className="py-1.5 text-left w-20 font-bold uppercase text-[10px] tracking-wider">Date</th>
+                 <th className="py-1.5 text-left font-bold uppercase text-[10px] tracking-wider">Description</th>
+                 <th className="py-1.5 text-right w-20 font-bold uppercase text-[10px] tracking-wider">Fee</th>
+                 <th className="py-1.5 text-right w-20 font-bold uppercase text-[10px] tracking-wider">Paid</th>
+                 <th className="py-1.5 text-right w-24 font-bold uppercase text-[10px] tracking-wider">Balance</th>
               </tr>
            </thead>
-           <tbody>
+           <tbody className="text-[11px]">
               {statementData.rows.map((row, i) => (
-                 <tr key={i} className={cn("border-b border-gray-100", row.type === 'payment' && "bg-green-50/50 print:bg-transparent")}>
-                    <td className="py-3 text-gray-600 font-mono text-xs">{row.date}</td>
-                    <td className="py-3">
+                 <tr key={i} className={cn("border-b border-gray-100", row.type === 'payment' && "bg-green-50/50 print:bg-transparent", row.type === 'balance' && "bg-gray-50 font-bold print:bg-transparent")}>
+                    <td className="py-1.5 text-gray-600 font-mono">{row.date}</td>
+                    <td className="py-1.5">
                        <span className={cn("font-medium", row.type === 'payment' ? "text-green-700 font-bold" : "text-gray-900")}>
                           {row.desc}
                        </span>
                     </td>
-                    <td className="py-3 text-right text-gray-600">{row.debit > 0 ? `R ${row.debit.toFixed(2)}` : '-'}</td>
-                    <td className="py-3 text-right text-green-600 font-bold">{row.credit > 0 ? `R ${row.credit.toFixed(2)}` : '-'}</td>
-                    <td className="py-3 text-right font-mono font-bold">R {row.balance.toFixed(2)}</td>
+                    <td className="py-1.5 text-right text-gray-600">
+                        {row.type !== 'balance' && row.debit > 0 ? `R ${row.debit.toFixed(2)}` : '-'}
+                    </td>
+                    <td className="py-1.5 text-right text-green-600 font-bold">
+                        {row.type !== 'balance' && row.credit > 0 ? `R ${row.credit.toFixed(2)}` : '-'}
+                    </td>
+                    <td className="py-1.5 text-right font-mono font-bold">R {row.balance.toFixed(2)}</td>
                  </tr>
               ))}
-              {statementData.rows.length === 0 && (
+              {statementData.rows.length === 1 && (
                  <tr>
-                    <td colSpan={5} className="py-12 text-center text-gray-400 italic border-b border-gray-100">
-                       No transactions found for this account.
+                    <td colSpan={5} className="py-8 text-center text-gray-400 italic border-b border-gray-100">
+                       No transactions found for {selectedMonth}.
                     </td>
                  </tr>
               )}
            </tbody>
            <tfoot>
               <tr>
-                 <td colSpan={3} className="pt-6"></td>
-                 <td className="pt-6 text-right font-bold text-gray-500 uppercase text-xs tracking-widest">Total Due</td>
-                 <td className="pt-6 text-right font-black text-2xl border-b-4 border-black pb-1">
+                 <td colSpan={3} className="pt-4"></td>
+                 <td className="pt-4 text-right font-bold text-gray-500 uppercase text-[10px] tracking-widest">Total Due</td>
+                 <td className="pt-4 text-right font-black text-xl border-b-4 border-black pb-1">
                     R {statementData.finalBalance.toFixed(2)}
                  </td>
               </tr>
@@ -196,7 +254,7 @@ export function ClientStatementDocument({ client, players, sessions, onClose }: 
         </table>
 
         {/* Footer */}
-        <div className="mt-auto pt-8 border-t border-gray-200 text-xs text-gray-400 text-center uppercase tracking-widest font-bold">
+        <div className="mt-auto pt-6 border-t border-gray-200 text-[10px] text-gray-400 text-center uppercase tracking-widest font-bold">
            Thank you for your continued support.
         </div>
 

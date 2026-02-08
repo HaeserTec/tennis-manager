@@ -75,6 +75,7 @@ export function AcademyOffice({
   onClose
 }: AcademyOfficeProps) {
   const [activeTab, setActiveTab] = useState<Tab>('insights');
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
 
   return (
     <div className="flex flex-col h-full bg-radial-gradient overflow-hidden">
@@ -131,27 +132,7 @@ export function AcademyOffice({
                players={players}
                sessions={sessions}
                onUpsertClient={onUpsertClient}
-               onEditClient={(client) => {
-                  // We can either pass a handler or let FinancialWorkspace handle it internally if it has a modal
-                  // FinancialWorkspace prop 'onEditClient' triggers whatever we pass here.
-                  // Since FinancialWorkspace manages the edit state for Payment, maybe we just want to open the edit panel?
-                  // Actually FinancialWorkspace uses 'onEditClient' to presumably open an edit form.
-                  // We can reuse the one from AcademyOffice if we lift state, or just pass a no-op if FinancialWorkspace doesn't strictly need it to lift up.
-                  // BUT, FinancialWorkspace prompts 'onEditClient'.
-                  // Let's assume we want to use the ClientEditPanel.
-                  // We need state for editing client in AcademyOffice if we want to share it?
-                  // Or FinancialWorkspace can invoke onUpsertClient directly.
-                  // Let's pass a dummy for now or implement it if FinancialWorkspace expects to bubble up.
-                  // Looking at FinancialWorkspace code: it calls onEditClient(cf.client).
-                  // So we should handle it.
-                  // I'll add a simple state wrapper or just let it be handled if I can access the state.
-                  // For now, I'll pass onUpsertClient as a fallback or just use console.log if not critical, but better to fix.
-                  // Actually, I can add a state here in AcademyOffice for `editingClient` if I haven't already.
-                  // There is `editingClient` in AccountsWorkspace (deleted).
-                  // I should probably move that state up or let FinancialWorkspace handle it?
-                  // FinancialWorkspace DOES NOT have internal state for editing client *details*, only for *payments*.
-                  // So I need to handle onEditClient here.
-               }}
+               onEditClient={setEditingClient}
             />
          </div>
          <div className={cn("h-full w-full", activeTab !== 'bookings' && "hidden")}>
@@ -161,6 +142,28 @@ export function AcademyOffice({
             <ExpenseTracker expenses={expenses} upsertExpense={upsertExpense} deleteExpense={deleteExpense} />
          </div>
       </div>
+
+      {editingClient && (
+        <ClientEditPanel
+          client={editingClient}
+          players={players}
+          allClients={clients}
+          sessions={sessions}
+          isOpen={true}
+          onClose={() => setEditingClient(null)}
+          onSave={(updated) => {
+            onUpsertClient(updated);
+            setEditingClient(null);
+          }}
+          onDelete={(id) => {
+            if (onDeleteClient) onDeleteClient(id);
+            setEditingClient(null);
+          }}
+          onMerge={(s, t) => {
+            if (onMergeClients) onMergeClients(s, t);
+          }}
+        />
+      )}
     </div>
   );
 }

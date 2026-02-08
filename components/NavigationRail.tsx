@@ -49,8 +49,9 @@ import {
     onInstall,
     isFullscreen,
     onToggleFullscreen,
-    fullscreenSupported
-  }: NavigationRailProps) {
+    fullscreenSupported,
+    onOpenProfile
+  }: NavigationRailProps & { onOpenProfile?: () => void }) {
     return (
       <div className="hidden lg:flex flex-col items-center w-16 h-full glass border-r border-border py-4 z-40">
         {/* Home / Logo */}
@@ -139,6 +140,19 @@ import {
 
       {/* Bottom Actions */}
       <div className="mt-auto flex flex-col gap-4 items-center">
+        {/* Profile Button */}
+        {onOpenProfile && (
+          <button 
+            onClick={onOpenProfile} 
+            className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-purple-600 p-[2px] shadow-lg hover:scale-105 transition-transform"
+            title="My Profile"
+          >
+            <div className="w-full h-full rounded-full bg-background flex items-center justify-center">
+               <span className="font-black text-xs text-primary">ME</span>
+            </div>
+          </button>
+        )}
+
         {onOpenClientPortal && (
            <button onClick={onOpenClientPortal} className="p-2 text-muted-foreground hover:text-red-400 transition-colors" title="Log Out">
               <LogOut className="w-5 h-5" />

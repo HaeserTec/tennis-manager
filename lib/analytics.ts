@@ -358,55 +358,78 @@ export function getRevenueChartData(sessions: TrainingSession[], period: 'week' 
   const now = new Date();
   
   if (period === 'week') {
-    for (let i = 0; i < 7; i++) {
+    // Last 7 Days (including today)
+    for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
-      d.setDate(d.getDate() - (now.getDay() - 1) + i); // Start from Monday of current week
+      d.setDate(now.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
       
       let val = 0;
       sessions.forEach(s => {
          if (s.date === dateStr) {
-            val += (s.price || 0);
+            val += (s.price || 0) * (s.participantIds.length || 0); // Revenue = Price * Participants
          }
       });
       data.push({ label: d.toLocaleDateString('en-US', { weekday: 'short' }), value: val });
     }
   } else if (period === 'month') {
-     // Show current calendar month (all weeks)
-     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+     // Current Month broken into Weeks (Local Time based)
+     // To avoid UTC shifts, we work with the Date object but format to YYYY-MM-DD for comparison
+     const year = now.getFullYear();
+     const month = now.getMonth();
      
-     // Break into 4-5 weeks
+     // First day of current month
+     const startOfMonth = new Date(year, month, 1);
+     // Last day of current month
+     const endOfMonth = new Date(year, month + 1, 0);
+     
      let current = new Date(startOfMonth);
      let weekNum = 1;
      
-     while (current <= endOfMonth) {
+     // Loop until we pass the end of the month
+     while (current.getMonth() === month) {
         const weekStart = new Date(current);
         const weekEnd = new Date(current);
         weekEnd.setDate(weekEnd.getDate() + 6);
         
+        // Cap weekEnd at end of month for cleaner buckets, though usually weeks span across
+        // But for "This Month" view, we usually want to see full weeks or strict month cut?
+        // Let's keep 7-day windows starting from the 1st.
+        
+        // Convert to YYYY-MM-DD strings for strict comparison against session.date
+        // Important: Use local time string, not UTC
+        const toLocalISO = (d: Date) => {
+            const offset = d.getTimezoneOffset() * 60000;
+            return new Date(d.getTime() - offset).toISOString().split('T')[0];
+        };
+
+        const startStr = toLocalISO(weekStart);
+        const endStr = toLocalISO(weekEnd);
+
         let val = 0;
         sessions.forEach(s => {
-           const sDate = new Date(s.date);
-           if (sDate >= weekStart && sDate <= weekEnd && sDate <= endOfMonth) {
-              val += (s.price || 0);
+           // Simple string comparison works for ISO dates
+           if (s.date >= startStr && s.date <= endStr) {
+              val += (s.price || 0) * (s.participantIds.length || 0);
            }
         });
         
         data.push({ label: `Week ${weekNum}`, value: val });
+        
         current.setDate(current.getDate() + 7);
         weekNum++;
      }
   } else {
+     // Current Year (Jan - Dec)
+     const currentYear = now.getFullYear();
      for (let i = 0; i < 12; i++) {
-        const d = new Date(now.getFullYear(), i, 1); // Jan to Dec
-        const monthIdx = i;
+        const d = new Date(currentYear, i, 1);
         
         let val = 0;
         sessions.forEach(s => {
            const sDate = new Date(s.date);
-           if (sDate.getFullYear() === now.getFullYear() && sDate.getMonth() === monthIdx) {
-              val += (s.price || 0);
+           if (sDate.getFullYear() === currentYear && sDate.getMonth() === i) {
+              val += (s.price || 0) * (s.participantIds.length || 0);
            }
         });
         data.push({ label: d.toLocaleDateString('en-US', { month: 'short' }), value: val });

@@ -4,12 +4,14 @@ import { PlaybookDiagramV2 } from '@/components/PlaybookDiagramV2';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { Drill, SessionType, Format, Intensity, Sequence, SessionPlan, DrillTemplate } from '@/lib/playbook';
-import { cn, nanoid, nowMs, downloadTextFile } from '@/lib/utils';
+import type { Drill, SessionType, Format, Intensity, Sequence, SessionPlan, DrillTemplate, Player } from '@/lib/playbook';
+import { cn, nanoid, nowMs, downloadTextFile, safeJsonParse } from '@/lib/utils';
 import { SessionBuilder } from '@/components/SessionBuilder';
 import { HomeDashboard } from '@/components/HomeDashboard';
 import { DrillThumbnail } from '@/components/DrillThumbnail';
 import { LockerRoom } from '@/components/LockerRoom';
+import { PlayerDossier } from '@/components/locker/PlayerDossier';
+import { CoachDossier, CoachProfile } from '@/components/locker/CoachDossier';
 import { AcademyOffice } from '@/components/AcademyOffice';
 import { Scoreboard } from '@/components/Scoreboard';
 import { NavigationRail, AppMode } from '@/components/NavigationRail';
@@ -109,6 +111,24 @@ type ConfirmDialogOptions = {
   showSave?: boolean;
 };
 
+// Default Coach Profile
+const DEFAULT_COACH_PROFILE: CoachProfile = {
+  id: 'coach-profile',
+  name: 'Coach',
+  title: 'Head Coach',
+  philosophy: '',
+  seasonFocus: '',
+  education: [],
+  goals: [],
+  gear: {
+    racket: '',
+    strings: '',
+    tension: '',
+    shoes: '',
+    lastRestrung: ''
+  }
+};
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthState>(null);
 
@@ -129,6 +149,18 @@ export default function App() {
      forceSync,
      importData
   } = useData();
+
+  // Coach Profile State
+  const [showCoachProfile, setShowCoachProfile] = useState(false);
+  const [coachProfile, setCoachProfile] = useState<CoachProfile>(() => {
+    if (typeof window === 'undefined') return DEFAULT_COACH_PROFILE;
+    return safeJsonParse(localStorage.getItem('tactics-lab-coach-profile'), DEFAULT_COACH_PROFILE);
+  });
+
+  const updateCoachProfile = (updated: CoachProfile) => {
+    setCoachProfile(updated);
+    localStorage.setItem('tactics-lab-coach-profile', JSON.stringify(updated));
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -799,6 +831,7 @@ export default function App() {
            isFullscreen={isFullscreen}
            onToggleFullscreen={toggleFullscreen}
            fullscreenSupported={fullscreenSupported}
+           onOpenProfile={() => setShowCoachProfile(true)}
         />
       </div>
       
@@ -1501,6 +1534,20 @@ export default function App() {
          onBackup={handleBackup}
          onImport={importData}
       />
+
+      {/* COACH PROFILE MODAL */}
+      {showCoachProfile && (
+        <div className="fixed inset-0 z-[100] bg-background">
+          <CoachDossier
+            profile={coachProfile}
+            players={players}
+            sessions={sessions}
+            drills={drills}
+            onUpdate={updateCoachProfile}
+            onBack={() => setShowCoachProfile(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
