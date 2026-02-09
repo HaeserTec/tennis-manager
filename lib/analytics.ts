@@ -357,84 +357,88 @@ export function getRevenueChartData(sessions: TrainingSession[], period: 'week' 
   const data: ChartData[] = [];
   const now = new Date();
   
+  // Helpers to format Local Date strings safely
+  const toLocalISO = (d: Date) => {
+      const offset = d.getTimezoneOffset() * 60000;
+      return new Date(d.getTime() - offset).toISOString().split('T')[0];
+  };
+
+  const getDayVal = (s: TrainingSession) => (s.price || 0) * (s.participantIds.length || 0);
+
   if (period === 'week') {
-    // Last 7 Days (including today)
+    // Generate buckets for the last 7 days including today
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(now.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateKey = toLocalISO(d); // "2026-02-10"
       
       let val = 0;
       sessions.forEach(s => {
-         if (s.date === dateStr) {
-            val += (s.price || 0) * (s.participantIds.length || 0); // Revenue = Price * Participants
+         // Strict String Equality
+         if (s.date === dateKey) {
+            val += getDayVal(s);
          }
       });
       data.push({ label: d.toLocaleDateString('en-US', { weekday: 'short' }), value: val });
     }
+
   } else if (period === 'month') {
-     // Current Month broken into Weeks (Local Time based)
-     // To avoid UTC shifts, we work with the Date object but format to YYYY-MM-DD for comparison
-     const year = now.getFullYear();
-     const month = now.getMonth();
-     
-     // First day of current month
-     const startOfMonth = new Date(year, month, 1);
-     // Last day of current month
-     const endOfMonth = new Date(year, month + 1, 0);
-     
-     let current = new Date(startOfMonth);
-     let weekNum = 1;
-     
-     // Loop until we pass the end of the month
-     while (current.getMonth() === month) {
-        const weekStart = new Date(current);
-        const weekEnd = new Date(current);
-        weekEnd.setDate(weekEnd.getDate() + 6);
-        
-        // Cap weekEnd at end of month for cleaner buckets, though usually weeks span across
-        // But for "This Month" view, we usually want to see full weeks or strict month cut?
-        // Let's keep 7-day windows starting from the 1st.
-        
-        // Convert to YYYY-MM-DD strings for strict comparison against session.date
-        // Important: Use local time string, not UTC
-        const toLocalISO = (d: Date) => {
-            const offset = d.getTimezoneOffset() * 60000;
-            return new Date(d.getTime() - offset).toISOString().split('T')[0];
-        };
-
-        const startStr = toLocalISO(weekStart);
-        const endStr = toLocalISO(weekEnd);
-
-        let val = 0;
-        sessions.forEach(s => {
-           // Simple string comparison works for ISO dates
-           if (s.date >= startStr && s.date <= endStr) {
-              val += (s.price || 0) * (s.participantIds.length || 0);
-           }
-        });
-        
-        data.push({ label: `Week ${weekNum}`, value: val });
-        
-        current.setDate(current.getDate() + 7);
-        weekNum++;
-     }
-  } else {
-     // Current Year (Jan - Dec)
+     // String-based bucket logic for current month
+     // 1. Get current "YYYY-MM" prefix
      const currentYear = now.getFullYear();
-     for (let i = 0; i < 12; i++) {
-        const d = new Date(currentYear, i, 1);
-        
-        let val = 0;
-        sessions.forEach(s => {
-           const sDate = new Date(s.date);
-           if (sDate.getFullYear() === currentYear && sDate.getMonth() === i) {
-              val += (s.price || 0) * (s.participantIds.length || 0);
+     const currentMonth = now.getMonth() + 1; // 1-based for string
+     const prefix = `${currentYear}-${String(currentMonth).padStart(2, '0')}`; // e.g. "2026-02"
+
+     // 2. Initialize 5 buckets (Week 1 to Week 5)
+     const weeks = [0, 0, 0, 0, 0];
+
+     sessions.forEach(s => {
+        // Only process sessions belonging to this month string
+        if (s.date && s.date.startsWith(prefix)) {
+           // Parse the day part "2026-02-15" -> 15
+           const dayPart = s.date.split('-')[2]; 
+           const day = parseInt(dayPart, 10);
+           
+           if (!isNaN(day)) {
+              // Calculate bucket: (Day 1-7 -> Index 0), (Day 8-14 -> Index 1)...
+              const weekIdx = Math.floor((day - 1) / 7);
+              // Clamp to index 4 (Week 5) for days 29, 30, 31
+              const safeIdx = Math.min(weekIdx, 4);
+              
+              weeks[safeIdx] += getDayVal(s);
            }
-        });
-        data.push({ label: d.toLocaleDateString('en-US', { month: 'short' }), value: val });
-     }
+        }
+     });
+
+     // 3. Map to ChartData
+     weeks.forEach((val, i) => {
+        data.push({ label: `Week ${i + 1}`, value: val });
+     });
+
+  } else {
+     // Year View
+     const currentYearStr = String(now.getFullYear()); // "2026"
+     const months = Array(12).fill(0);
+
+     sessions.forEach(s => {
+        // Only process sessions starting with "2026"
+        if (s.date && s.date.startsWith(currentYearStr)) {
+           // Parse month part "2026-02-15" -> 02
+           const monthPart = s.date.split('-')[1];
+           const month = parseInt(monthPart, 10); // 1-12
+           
+           if (!isNaN(month) && month >= 1 && month <= 12) {
+              months[month - 1] += getDayVal(s);
+           }
+        }
+     });
+
+     const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+     months.forEach((val, i) => {
+        data.push({ label: monthNames[i], value: val });
+     });
   }
+  
   return data;
 }
 
