@@ -78,6 +78,7 @@ type DiagramPath = {
   pathType?: PathType;
   arrowHead?: ArrowHeadType;
   lineStyle?: LineStyle;
+  order?: number;
 };
 
 type DiagramState = {
@@ -86,6 +87,7 @@ type DiagramState = {
 };
 
 type CourtSurface = 'blueprint' | 'hard' | 'clay' | 'grass' | 'elite';
+type PlaybackMode = 'coach-feed' | 'player-rally';
 
 const STORAGE_KEY = "ui.playbook.diagram.v2";
 // Base width for landscape, extended for baselines: 1200 (original) + 60 (left) + 60 (right) = 1320
@@ -247,66 +249,236 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
   const [state, setState] = React.useState<DiagramState>({ nodes: [], paths: [] });
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
+  const [playbackMode, setPlaybackMode] = React.useState<PlaybackMode>('coach-feed');
 
-  // --- Place after state declarations ---
-  const hasCoach = React.useMemo(() => state.nodes.some(n => n.type === "coach"), [state.nodes]);
+  type PlaybackMove = {
+    targetNodeId: string;
+    pathId?: string;
+    pathType: PathType;
+    points: Array<{ x: number; y: number }>;
+    lane: 'feeder' | 'ball' | 'player1' | 'player2';
+  };
+  type PlaybackStep = {
+    id: string;
+    order: number;
+    kind: 'feed' | 'shot' | 'recovery';
+    moves: PlaybackMove[];
+    lanes: {
+      feeder: string;
+      ball: string;
+      player1: string;
+      player2: string;
+    };
+  };
+
+  const orderedPaths = React.useMemo(() => {
+    return [...state.paths]
+      .map((path, idx) => ({ path, idx, order: typeof path.order === 'number' ? path.order : idx + 1 }))
+      .sort((a, b) => (a.order - b.order) || (a.idx - b.idx));
+  }, [state.paths]);
+
+  const playersForPlayback = React.useMemo(() => {
+    const numericLabel = (n: DiagramNode) => {
+      const parsed = Number(n.label);
+      return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+    };
+    return state.nodes
+      .filter((n) => n.type === 'player')
+      .sort((a, b) => {
+        const ln = numericLabel(a) - numericLabel(b);
+        if (Number.isFinite(ln) && ln !== 0) return ln;
+        return a.x - b.x;
+      });
+  }, [state.nodes]);
+
+  const coachNode = React.useMemo(
+    () => state.nodes.find((n) => n.type === 'coach') || null,
+    [state.nodes]
+  );
+  const ballNode = React.useMemo(
+    () => state.nodes.find((n) => n.type === 'ball') || null,
+    [state.nodes]
+  );
 
   const steps = React.useMemo(() => {
-    const sorted = [...state.paths].sort((a, b) => (a.order || 0) - (b.order || 0));
-    const result = [];
-    let i = 0;
+    const resolvedBall = ballNode || playersForPlayback[0] || coachNode;
+    const p1 = playersForPlayback[0] || null;
+    const p2 = playersForPlayback[1] || null;
+    const p1Name = p1?.label ? `P${p1.label}` : 'P1';
+    const p2Name = p2?.label ? `P${p2.label}` : 'P2';
+    const feederName = coachNode ? 'Coach' : 'Auto';
+    const result: PlaybackStep[] = [];
 
-    // Helper to check what an arrow starts closest to
-    const startsNearBall = (path: DiagramPath) => {
-        const start = path.points[0];
-        if (!start) return false;
-        
-        let minBallDist = Infinity;
-        let minPlayerDist = Infinity;
+    if (!resolvedBall || orderedPaths.length === 0) return result;
 
-        state.nodes.forEach(n => {
-            const d = (n.x - start.x)**2 + (n.y - start.y)**2;
-            if (n.type === 'ball') minBallDist = Math.min(minBallDist, d);
-            if (n.type === 'player' || n.type === 'coach') minPlayerDist = Math.min(minPlayerDist, d);
-        });
-
-        // If closer to ball than player/coach, treat as ball movement
-        // Add a bias: Players are larger, so if distances are somewhat equal, prefer player movement
-        return minBallDist < minPlayerDist; 
-    };
-
-    while (i < sorted.length) {
-      const cur = sorted[i];
-      const nxt = sorted[i + 1];
-      
-      const curCrosses = crossesNet(cur.points, VB_WIDTH, VB_HEIGHT, orientation);
-      const nxtIsPlayer = nxt && !crossesNet(nxt.points, VB_WIDTH, VB_HEIGHT, orientation); // Next is definitely same-side
-
-      // It is a ball if it crosses the net OR if it starts closer to a ball node
-      const curIsBall = curCrosses || startsNearBall(cur);
-
-      if (curIsBall && nxtIsPlayer) {
-        if (hasCoach) {
-          // Coach mode: ALL ball arrows pair with next player arrow
-          result.push({ type: "paired", ballPath: cur, playerPath: nxt, ids: [cur.id, nxt.id] });
-          i += 2; continue;
-        } else {
-          // Player vs player: only pair if player is on the receiving side
-          const ballLands = getEndSide(cur.points, VB_WIDTH, VB_HEIGHT, orientation);
-          const playerSide = getSide(nxt.points[0], VB_WIDTH, VB_HEIGHT, orientation);
-          
-          // Only pair if the ball actually goes to where the player is
-          if (ballLands === playerSide) {
-            result.push({ type: "paired", ballPath: cur, playerPath: nxt, ids: [cur.id, nxt.id] });
-            i += 2; continue;
-          }
+    const distSq = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+      (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+    const isNearNodeStart = (path: DiagramPath, node: DiagramNode | null, threshold = 3000) =>
+      Boolean(node && path.points[0] && distSq(path.points[0], { x: node.x, y: node.y }) <= threshold);
+    const isRecoveryShape = (path: DiagramPath) => !crossesNet(path.points, VB_WIDTH, VB_HEIGHT, orientation);
+    const nearestPlayerToPoint = (point: { x: number; y: number }) => {
+      if (!playersForPlayback.length) return null;
+      let nearest = playersForPlayback[0];
+      let min = distSq(point, { x: nearest.x, y: nearest.y });
+      for (let i = 1; i < playersForPlayback.length; i += 1) {
+        const p = playersForPlayback[i];
+        const d = distSq(point, { x: p.x, y: p.y });
+        if (d < min) {
+          min = d;
+          nearest = p;
         }
       }
-      result.push({ type: curIsBall ? "ball" : "player", path: cur, ids: [cur.id] });
-      i++;
+      return nearest;
+    };
+    const defaultRecoveryPath = (player: DiagramNode, anchor: { x: number; y: number }) => ({
+      pathType: 'linear' as PathType,
+      points: [{ x: player.x, y: player.y }, { x: anchor.x, y: anchor.y }],
+    });
+
+    if (playbackMode === 'coach-feed') {
+      let idx = 0;
+      while (idx < orderedPaths.length) {
+        const feed = orderedPaths[idx]?.path;
+        if (!feed || feed.points.length < 2) break;
+        const feedOrder = orderedPaths[idx].order;
+        idx += 1;
+
+        const hitter = nearestPlayerToPoint(feed.points[feed.points.length - 1]) || p1;
+        const hitterLane = hitter && p1 && hitter.id === p1.id ? 'player1' : 'player2';
+        const hitterName = hitter?.label ? `P${hitter.label}` : (hitter === p1 ? p1Name : p2Name);
+
+        result.push({
+          id: `${feed.id}-feed`,
+          order: feedOrder,
+          kind: 'feed',
+          lanes: { feeder: feederName, ball: 'Feed', player1: '-', player2: '-' },
+          moves: [{
+            targetNodeId: resolvedBall.id,
+            pathId: feed.id,
+            pathType: feed.pathType || 'linear',
+            points: feed.points,
+            lane: 'ball',
+          }],
+        });
+
+        const shotCandidate = orderedPaths[idx]?.path;
+        if (!shotCandidate || !hitter || shotCandidate.points.length < 2) continue;
+        idx += 1;
+        const shotOrder = orderedPaths[idx - 1].order;
+
+        result.push({
+          id: `${shotCandidate.id}-shot`,
+          order: shotOrder,
+          kind: 'shot',
+          lanes: { feeder: '-', ball: `Shot by ${hitterName}`, player1: hitterLane === 'player1' ? 'Hit' : '-', player2: hitterLane === 'player2' ? 'Hit' : '-' },
+          moves: [{
+            targetNodeId: resolvedBall.id,
+            pathId: shotCandidate.id,
+            pathType: shotCandidate.pathType || 'linear',
+            points: shotCandidate.points,
+            lane: 'ball',
+          }],
+        });
+
+        const recoveryCandidate = orderedPaths[idx]?.path;
+        const hasRecoveryPath = Boolean(
+          recoveryCandidate &&
+          hitter &&
+          isNearNodeStart(recoveryCandidate, hitter) &&
+          isRecoveryShape(recoveryCandidate)
+        );
+
+        if (hasRecoveryPath) {
+          idx += 1;
+          const recoveryOrder = orderedPaths[idx - 1].order;
+          result.push({
+            id: `${recoveryCandidate!.id}-recovery`,
+            order: recoveryOrder,
+            kind: 'recovery',
+            lanes: { feeder: '-', ball: '-', player1: hitterLane === 'player1' ? 'Recover' : '-', player2: hitterLane === 'player2' ? 'Recover' : '-' },
+            moves: [{
+              targetNodeId: hitter!.id,
+              pathId: recoveryCandidate!.id,
+              pathType: recoveryCandidate!.pathType || 'linear',
+              points: recoveryCandidate!.points,
+              lane: hitterLane,
+            }],
+          });
+        } else {
+          // Auto-fix: always add recovery phase back to player's home anchor.
+          const recoveryOrder = shotOrder + 0.001;
+          const autoRecovery = defaultRecoveryPath(hitter, { x: hitter.x, y: hitter.y });
+          result.push({
+            id: `${shotCandidate.id}-auto-recovery`,
+            order: recoveryOrder,
+            kind: 'recovery',
+            lanes: { feeder: '-', ball: '-', player1: hitterLane === 'player1' ? 'Recover (Auto)' : '-', player2: hitterLane === 'player2' ? 'Recover (Auto)' : '-' },
+            moves: [{
+              targetNodeId: hitter.id,
+              pathType: autoRecovery.pathType,
+              points: autoRecovery.points,
+              lane: hitterLane,
+            }],
+          });
+        }
+      }
+      return result;
     }
+
+    // Player-vs-player strict alternation mode
+    const rallyPlayers = [p1, p2].filter(Boolean) as DiagramNode[];
+    if (rallyPlayers.length === 0) return result;
+    let hitterIndex = 0;
+    orderedPaths.forEach(({ path, order }, idx) => {
+      if (!path.points.length) return;
+      const hitter = rallyPlayers[hitterIndex % rallyPlayers.length];
+      const hitterLane = p1 && hitter.id === p1.id ? 'player1' : 'player2';
+      const hitterName = hitter?.label ? `P${hitter.label}` : (hitterLane === 'player1' ? p1Name : p2Name);
+
+      result.push({
+        id: `${path.id}-rally-shot`,
+        order,
+        kind: 'shot',
+        lanes: { feeder: '-', ball: `Shot by ${hitterName}`, player1: hitterLane === 'player1' ? 'Hit' : '-', player2: hitterLane === 'player2' ? 'Hit' : '-' },
+        moves: [{
+          targetNodeId: resolvedBall.id,
+          pathId: path.id,
+          pathType: path.pathType || 'linear',
+          points: path.points,
+          lane: 'ball',
+        }],
+      });
+
+      // Auto-recovery always on
+      const recoveryOrder = order + 0.001;
+      const autoRecovery = defaultRecoveryPath(hitter, { x: hitter.x, y: hitter.y });
+      result.push({
+        id: `${path.id}-rally-recovery`,
+        order: recoveryOrder,
+        kind: 'recovery',
+        lanes: { feeder: '-', ball: '-', player1: hitterLane === 'player1' ? 'Recover (Auto)' : '-', player2: hitterLane === 'player2' ? 'Recover (Auto)' : '-' },
+        moves: [{
+          targetNodeId: hitter.id,
+          pathType: autoRecovery.pathType,
+          points: autoRecovery.points,
+          lane: hitterLane,
+        }],
+      });
+
+      hitterIndex += 1;
+    });
     return result;
-  }, [state.paths, state.nodes, hasCoach, VB_WIDTH, VB_HEIGHT, orientation]);
+  }, [orderedPaths, playersForPlayback, coachNode, ballNode, playbackMode, VB_WIDTH, VB_HEIGHT, orientation]);
+
+  const pathToStepIndex = React.useMemo(() => {
+    const map = new Map<string, number>();
+    steps.forEach((step, idx) => {
+      step.moves.forEach((move) => {
+        if (move.pathId) map.set(move.pathId, idx);
+      });
+    });
+    return map;
+  }, [steps]);
   
   const primarySelectedId = selectedIds[0] ?? null;
   const primaryNode = primarySelectedId ? state.nodes.find((n) => n.id === primarySelectedId) ?? null : null;
@@ -416,6 +588,43 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
   // 'waitingForArrowEnd': Next click finishes arrow
   const [autoFlowState, setAutoFlowState] = React.useState<'waitingForBall' | 'waitingForArrowEnd' | null>(null);
 
+  const activeToolLabel = React.useMemo(() => {
+    if (quickArrowMode) return "Quick Arrow";
+    if (drawingPath?.pathType === "curve") return "Curve Arrow";
+    if (drawingPath?.pathType === "linear") return "Polyline Arrow";
+    if (placingType) {
+      const labels: Record<string, string> = {
+        player: "Player",
+        coach: "Coach",
+        ball: "Ball",
+        cone: "Cone",
+        target: "Target",
+        targetBox: "Target Box",
+        targetLine: "Target Line",
+        text: "Text",
+        feeder: "Feeder",
+        ladder: "Ladder",
+      };
+      return labels[placingType] || "Place";
+    }
+    return "Select";
+  }, [quickArrowMode, drawingPath?.pathType, placingType]);
+
+  const nodeCounts = React.useMemo(() => {
+    const counts = {
+      players: 0,
+      coaches: 0,
+      balls: 0,
+      paths: state.paths.length,
+    };
+    state.nodes.forEach((n) => {
+      if (n.type === "player") counts.players += 1;
+      else if (n.type === "coach") counts.coaches += 1;
+      else if (n.type === "ball") counts.balls += 1;
+    });
+    return counts;
+  }, [state.nodes, state.paths.length]);
+
   // Animation State
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [animProgress, setAnimProgress] = React.useState(0);
@@ -447,20 +656,19 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     };
   }, [isPlaying, state.nodes, state.paths]);
 
-  // --- New Animation State ---
   const [currentStepIdx, setCurrentStepIdx] = React.useState(-1);
   const [stepProgress, setStepProgress] = React.useState(0);
   const animRef = React.useRef<number | null>(null);
 
-  // --- Replace your old animation useEffect with this ---
   React.useEffect(() => {
     if (!isPlaying || steps.length === 0) {
       if (animRef.current) cancelAnimationFrame(animRef.current);
+      setAnimProgress(0);
       return;
     }
 
-    const STEP_DUR = 1000; // 1 second per tactical phase
-    const PAUSE = 200;
+    const STEP_DUR = 1000;
+    const PAUSE = 1000;
     let stepIdx = 0;
     let phaseStart: number | null = null;
 
@@ -470,19 +678,26 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
 
       if (elapsed < STEP_DUR) {
         setCurrentStepIdx(stepIdx);
-        setStepProgress(elapsed / STEP_DUR);
+        const p = elapsed / STEP_DUR;
+        setStepProgress(p);
+        setAnimProgress((stepIdx + p) / Math.max(1, steps.length));
       } else if (elapsed < STEP_DUR + PAUSE) {
         setStepProgress(1);
+        setAnimProgress((stepIdx + 1) / Math.max(1, steps.length));
       } else {
         if (stepIdx < steps.length - 1) {
           stepIdx++;
           phaseStart = time;
           setCurrentStepIdx(stepIdx);
           setStepProgress(0);
+          setAnimProgress(stepIdx / Math.max(1, steps.length));
         } else {
           // Loop back to start
           stepIdx = 0;
           phaseStart = time;
+          setCurrentStepIdx(0);
+          setStepProgress(0);
+          setAnimProgress(0);
         }
       }
       animRef.current = requestAnimationFrame(tick);
@@ -492,83 +707,13 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, [isPlaying, steps]);
 
-  // Synchronized Path Progress Helper
   const getSyncedPathProgress = (pathId: string): number => {
-    if (!isPlaying || animProgress === 0) return 0;
-
-    const path = state.paths.find(p => p.id === pathId);
-    if (!path || path.points.length === 0) return 0;
-
-    // 1. Identify start node to determine Step Index
-    const start = path.points[0];
-    const startNode = state.nodes.find(n => (start.x - n.x)**2 + (start.y - n.y)**2 < 1600);
-    
-    if (!startNode) return 0;
-
-    const isPlayer = startNode.type === 'player';
-    const isCoach = startNode.type === 'coach';
-    const isBall = startNode.type === 'ball';
-
-    if (!isPlayer && !isCoach && !isBall) return 0;
-
-    // 2. Determine Step Index
-    let stepIndex = 0;
-    if (isPlayer) stepIndex = Math.max(0, parseInt(startNode.label || '1') - 1);
-    else if (isBall) stepIndex = Math.max(0, parseInt(startNode.label || '1') - 1);
-    
-    // 3. Determine Time Window
-    const players = state.nodes.filter(n => n.type === 'player');
-    const balls = state.nodes.filter(n => n.type === 'ball');
-    const maxSteps = Math.max(players.length, balls.length, 1);
-    const stepDuration = 1 / maxSteps;
-    
-    const stepStart = stepIndex * stepDuration;
-    const stepEnd = stepStart + stepDuration;
-
-    // Not in this step yet?
-    if (animProgress < stepStart) return 0;
-    if (animProgress > stepEnd) return 1;
-
-    // Local Progress (0-1) within the Step
-    const localStepProgress = (animProgress - stepStart) / stepDuration;
-
-    // 4. Phase Logic (Sync with Node Movement)
-    // Player/Coach moves 0.0-0.5, Ball moves 0.5-1.0
-    // But we need to check if the PARTNER exists to know if we are splitting the step or taking the whole thing.
-    
-    let windowStart = 0;
-    let windowEnd = 1;
-
-    if (isPlayer || isCoach) {
-        // Does Ball N exist and have a path?
-        const partnerBall = balls.find(b => parseInt(b.label || '0') === (stepIndex + 1));
-        const ballHasPath = partnerBall && state.paths.some(p => {
-           const s = p.points[0];
-           return s && (s.x - partnerBall.x)**2 + (s.y - partnerBall.y)**2 < 1600;
-        });
-        
-        if (ballHasPath) {
-           windowStart = 0;
-           windowEnd = 0.5;
-        }
-    } else if (isBall) {
-        // Does Player N exist and have a path?
-        const partnerPlayer = players.find(p => parseInt(p.label || '0') === (stepIndex + 1));
-        const playerHasPath = partnerPlayer && state.paths.some(p => {
-           const s = p.points[0];
-           return s && (s.x - partnerPlayer.x)**2 + (s.y - partnerPlayer.y)**2 < 1600;
-        });
-
-        if (playerHasPath) {
-           windowStart = 0.5;
-           windowEnd = 1;
-        }
-    }
-
-    if (localStepProgress < windowStart) return 0;
-    if (localStepProgress > windowEnd) return 1;
-    
-    return (localStepProgress - windowStart) / (windowEnd - windowStart);
+    if (!isPlaying) return 0;
+    const stepIdx = pathToStepIndex.get(pathId);
+    if (typeof stepIdx !== 'number') return 0;
+    if (currentStepIdx < stepIdx) return 0;
+    if (currentStepIdx > stepIdx) return 1;
+    return stepProgress;
   };
 
   // Exit Quick Arrow Mode on off-canvas click
@@ -2035,56 +2180,28 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
   // --- Place before the return statement ---
   const animatedNodes = React.useMemo(() => {
     if (!isPlaying || currentStepIdx < 0) return state.nodes;
-
-    const positions = new Map();
-    const players = state.nodes.filter(n => n.type === 'player');
-    const balls = state.nodes.filter(n => n.type === 'ball');
-
-    // Helper to find nearest node of a specific group to a point
-    const findNearest = (nodes: DiagramNode[], point: {x: number, y: number}) => {
-        let nearest = null;
-        let minD = Infinity;
-        for (const node of nodes) {
-            // Use current position if available (for chained movements)
-            const curr = positions.get(node.id) || { x: node.x, y: node.y };
-            const d = Math.pow(curr.x - point.x, 2) + Math.pow(curr.y - point.y, 2);
-            if (d < minD) { minD = d; nearest = node; }
-        }
-        return nearest;
-    };
+    const positions = new Map<string, { x: number; y: number }>();
+    const nodeById = new Map(state.nodes.map((n) => [n.id, n]));
 
     // Calculate position for every step up to the current one
     for (let sIdx = 0; sIdx <= currentStepIdx; sIdx++) {
       const step = steps[sIdx];
+      if (!step) continue;
       const t = (sIdx === currentStepIdx) ? stepProgress : 1;
-      
-      const animations: { path: DiagramPath, type: 'player' | 'ball', t: number }[] = [];
 
-      if (step.type === "paired") {
-          // Ball moves (Crosses net)
-          animations.push({ path: step.ballPath, type: 'ball', t });
-          // Player moves (Same side)
-          animations.push({ path: step.playerPath, type: 'player', t });
-      } else if (step.type === "ball") {
-          animations.push({ path: step.path, type: 'ball', t });
-      } else if (step.type === "player") {
-          animations.push({ path: step.path, type: 'player', t });
-      }
-
-      for (const anim of animations) {
-         const group = anim.type === 'ball' ? balls : players;
-         const startPoint = anim.path.points[0];
-         
-         const targetNode = findNearest(group, startPoint);
-         
-         if (targetNode) {
-             const pos = anim.path.pathType === 'curve' && anim.path.points.length === 3
-                ? getBezierPoint(easeOut(anim.t), anim.path.points[0], anim.path.points[1], anim.path.points[2])
-                : getPolylinePoint(easeOut(anim.t), anim.path.points);
-             
-             positions.set(targetNode.id, pos);
-         }
-      }
+      step.moves.forEach((move) => {
+        const node = nodeById.get(move.targetNodeId);
+        if (!node || !move.points.length) return;
+        const current = positions.get(node.id) || { x: node.x, y: node.y };
+        const start = move.points[0];
+        const dx = current.x - start.x;
+        const dy = current.y - start.y;
+        const shifted = move.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }));
+        const pos = move.pathType === 'curve' && shifted.length === 3
+          ? getBezierPoint(easeOut(t), shifted[0], shifted[1], shifted[2])
+          : getPolylinePoint(easeOut(t), shifted);
+        positions.set(node.id, pos);
+      });
     }
 
     return state.nodes.map(n => positions.get(n.id) ? { ...n, ...positions.get(n.id) } : n);
@@ -2109,25 +2226,45 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
   return (
     <TooltipProvider>
     {/* Shortcuts Help Modal */}
-          {showShortcuts && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowShortcuts(false)}>           <div className="bg-card border border-border p-6 rounded-xl shadow-2xl max-w-sm w-full" onClick={e => e.stopPropagation()}>
-               <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-lg text-foreground">Keyboard Shortcuts</h3>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 rounded-full" onClick={() => setShowShortcuts(false)}>✕</Button>
-               </div>
-               <div className="space-y-3 text-sm text-foreground">
-                  <div className="flex justify-between"><span className="text-muted-foreground">A</span> <span>Add Menu</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">G</span> <span>Toggle Grid</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">1-8</span> <span>Select, Arrow, Curve, Player, Coach, Ball, Cone, Target</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Del / Backspace</span> <span>Delete Selected</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Ctrl + D</span> <span>Duplicate</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Ctrl + Z</span> <span>Undo</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Ctrl + Y</span> <span>Redo</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Arrows</span> <span>Nudge Selection</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">?</span> <span>This Menu</span></div>
-               </div>
-           </div>
+    {showShortcuts && (
+      <div
+        className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+        onClick={() => setShowShortcuts(false)}
+      >
+        <div
+          className="bg-card border border-border p-6 rounded-xl shadow-2xl max-w-lg w-full"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h3 className="font-bold text-lg text-foreground">Keyboard Shortcuts</h3>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-0.5">Faster drill editing</p>
+            </div>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-full" onClick={() => setShowShortcuts(false)}>✕</Button>
+          </div>
+
+          <div className="space-y-2 text-sm text-foreground">
+            {[
+              { key: "A", action: "Open Add Menu" },
+              { key: "G", action: "Toggle Grid" },
+              { key: "1-8", action: "Switch Tool Presets" },
+              { key: "Del / Backspace", action: "Delete Selected" },
+              { key: "Ctrl + D", action: "Duplicate Selected" },
+              { key: "Ctrl + Z", action: "Undo" },
+              { key: "Ctrl + Y", action: "Redo" },
+              { key: "Arrow Keys", action: "Nudge Selected" },
+              { key: "?", action: "Open This Help" },
+            ].map((item) => (
+              <div key={item.key} className="flex justify-between items-center rounded-md border border-border/60 bg-card/40 px-3 py-2">
+                <span className="text-foreground/90">{item.action}</span>
+                <span className="font-mono text-[11px] px-2 py-0.5 rounded border border-border bg-background/70 text-muted-foreground">
+                  {item.key}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
+      </div>
     )}
 
     <Card className={cn("border border-white/5 glass flex flex-col overflow-hidden h-full shadow-2xl rounded-2xl", fill && "flex-1")}>
@@ -2251,6 +2388,15 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
               </TooltipTrigger>
               <TooltipContent>{isPlaying ? "Stop" : "Play Action"}</TooltipContent>
             </Tooltip>
+            <Select value={playbackMode} onValueChange={(v) => setPlaybackMode(v as PlaybackMode)}>
+              <SelectTrigger className="h-6 w-[142px] text-[10px] bg-transparent border-none px-1 text-muted-foreground">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="coach-feed">Coach Feed</SelectItem>
+                <SelectItem value="player-rally">Player Rally</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="h-6 w-px bg-border mx-1"></div>
@@ -2402,8 +2548,8 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                 "h-8 w-8 rounded-md border border-border/60 bg-secondary/50 hover:bg-secondary touch-none ring-1 ring-primary/20 shadow-sm",
                 toolbarCollapsed ? "text-foreground" : "text-primary",
                 toolbarDragging ? "cursor-grabbing" : "cursor-grab"
-              )}
-            >
+            )}
+          >
               <img src="/vgta-icon.svg" alt="VGTA" className="h-4 w-4" draggable="false" />
             </Button>
 
@@ -2568,6 +2714,31 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
                 </Tooltip>
               </>
             )}
+          </div>
+
+          {/* Canvas status HUD */}
+          <div className="pointer-events-none absolute left-3 top-3 z-10 flex flex-wrap items-center gap-1.5">
+            <div className="rounded-md border border-primary/30 bg-background/85 backdrop-blur px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+              Tool: {activeToolLabel}
+            </div>
+            <div className="rounded-md border border-border bg-background/80 backdrop-blur px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Grid: {gridOn ? "On" : "Off"}
+            </div>
+            <div className="rounded-md border border-border bg-background/80 backdrop-blur px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Snap: {snapSize === 0 ? "Off" : `${snapSize}px`}
+            </div>
+            <div className="rounded-md border border-border bg-background/80 backdrop-blur px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Mode: {playbackMode === 'coach-feed' ? 'Coach Feed' : 'Player Rally'}
+            </div>
+            <div className="rounded-md border border-border bg-background/80 backdrop-blur px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Selected: {selectedIds.length}
+            </div>
+            <div className="rounded-md border border-border bg-background/80 backdrop-blur px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Nodes: {state.nodes.length} | Paths: {state.paths.length}
+            </div>
+            <div className="rounded-md border border-border bg-background/80 backdrop-blur px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground hidden sm:block">
+              P:{nodeCounts.players} C:{nodeCounts.coaches} B:{nodeCounts.balls}
+            </div>
           </div>
 
           {/* Dynamic Floating Selection Toolbar */}
@@ -3186,17 +3357,28 @@ export const PlaybookDiagramV2 = React.forwardRef<PlaybookDiagramRef, PlaybookDi
       </CardContent>
       {/* --- Place after </CardContent> --- */}
       {steps.length > 0 && (
-        <div className="flex items-center gap-2 p-3 overflow-x-auto bg-white/[0.02] border-t border-white/5">
+        <div className="p-3 overflow-x-auto bg-white/[0.02] border-t border-white/5">
+          <div className="grid grid-cols-[84px_140px_140px_140px_140px] gap-2 min-w-[680px] text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-2 px-1">
+            <div>Step</div>
+            <div>Feeder</div>
+            <div>Ball</div>
+            <div>Player 1</div>
+            <div>Player 2</div>
+          </div>
+          <div className="space-y-1.5 min-w-[680px]">
           {steps.map((step, idx) => (
             <div key={idx} className={cn(
-              "flex items-center gap-1.5 p-1.5 px-3 rounded-xl border transition-all",
-              idx === currentStepIdx ? "bg-primary/20 border-primary/40 scale-105" : "bg-white/5 border-white/5 opacity-40"
+              "grid grid-cols-[84px_140px_140px_140px_140px] gap-2 items-center p-1.5 px-2 rounded-xl border transition-all",
+              idx === currentStepIdx ? "bg-primary/20 border-primary/40" : "bg-white/5 border-white/5 opacity-70"
             )}>
-              <span className="text-[10px] font-bold text-white/80">
-                {step.type === "paired" ? `${step.ballPath.order}+${step.playerPath.order}` : (step.path.order || idx + 1)}
-              </span>
+              <div className="text-[10px] font-bold text-white/90">#{idx + 1} • {step.kind}</div>
+              <div className="text-[10px] text-muted-foreground truncate">{step.lanes.feeder}</div>
+              <div className="text-[10px] text-muted-foreground truncate">{step.lanes.ball}</div>
+              <div className="text-[10px] text-muted-foreground truncate">{step.lanes.player1}</div>
+              <div className="text-[10px] text-muted-foreground truncate">{step.lanes.player2}</div>
             </div>
           ))}
+          </div>
         </div>
       )}
       {/* Mobile Toolbar */}

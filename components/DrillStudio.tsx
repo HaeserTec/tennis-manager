@@ -322,9 +322,9 @@ export function DrillStudio({
   }, [studioMode, activeDrillId, activeTemplateId, drills, templates]);
 
   return (
-    <div className="flex h-full bg-background overflow-hidden">
+    <div className="app-page flex h-full overflow-hidden">
       {/* Left Sidebar - Library Panel */}
-      <div className="w-80 lg:w-96 border-r border-border bg-card/30 flex flex-col shrink-0">
+      <div className="app-panel-muted app-divider w-80 lg:w-96 border-r flex flex-col shrink-0">
         {/* Header */}
         <div className="p-4 border-b border-border space-y-3">
           <div className="flex items-center justify-between">

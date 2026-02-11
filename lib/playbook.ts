@@ -104,6 +104,7 @@ export interface Player {
 
   // Journal / Notes
   journal?: { id: string; date: string; content: string }[];
+  sessionObservations?: SessionObservation[];
 
   // The Build
   handedness?: 'Right' | 'Left';
@@ -166,6 +167,21 @@ export interface Player {
 
    // Progress Tracking
    progressGoals?: ProgressGoal[];
+}
+
+export interface SessionObservation {
+  id: string;
+  playerId: string;
+  recordedAt: number;
+  sessionId?: string;
+  drillId?: string;
+  drillOutcome?: 'Excellent' | 'Good' | 'Mixed' | 'Poor';
+  ratings: Record<string, number>;
+  focusSkill?: string;
+  focusSkillRating?: number;
+  note?: string;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface Term {
@@ -436,4 +452,5 @@ export const STORAGE_KEYS = {
   DRILL_COLLECTIONS: 'tactics-lab-drill-collections',
   PLAYER_GOALS: 'tactics-lab-player-goals',
   DAY_EVENTS: 'tactics-lab-day-events',
+  SESSION_OBSERVATIONS: 'tactics-lab-session-observations',
 };

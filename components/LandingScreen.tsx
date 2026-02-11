@@ -67,7 +67,7 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
   };
 
   return (
-    <div className="midnight min-h-screen bg-radial-gradient text-white flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
+    <div className="midnight app-shell min-h-screen text-white flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
       {/* Background Ambience (Tennis Court) */}
       <div className="absolute inset-0 z-0 opacity-20 blur-[1px] pointer-events-none select-none">
          <PlaybookDiagramV2 showHeader={false} fill={true} disablePersistence={true} isBackground={true} />
@@ -90,7 +90,7 @@ export function LandingScreen({ clients, onCoachLogin, onClientLogin }: LandingS
         </div>
 
         {/* Main Card */}
-        <div className="glass-card rounded-[2.5rem] p-10">
+        <div className="glass-card app-elevated rounded-[2.5rem] p-10">
            
            {view === 'selection' && (
               <div className="space-y-5">

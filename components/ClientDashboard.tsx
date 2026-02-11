@@ -2,20 +2,22 @@ import React, { useState } from 'react';
 import { LogOut, Calendar, CreditCard, Activity, User, ChevronRight, Clock, MapPin, Trophy, ChevronLeft, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { Client, Player, TrainingSession, SessionLog, Drill } from '@/lib/playbook';
+import type { Client, Player, TrainingSession, SessionLog, Drill, DayEvent } from '@/lib/playbook';
 import { RadarChart } from '@/components/RadarChart';
 import { ProgressChart } from '@/components/ProgressChart';
+import { getSessionBillingForClient } from '@/lib/billing';
 
 interface ClientDashboardProps {
   client: Client;
   players: Player[];
   sessions: TrainingSession[];
+  dayEvents?: DayEvent[];
   logs: SessionLog[];
   drills: Drill[];
   onLogout: () => void;
 }
 
-export function ClientDashboard({ client, players, sessions, logs, drills, onLogout }: ClientDashboardProps) {
+export function ClientDashboard({ client, players, sessions, dayEvents = [], logs, drills, onLogout }: ClientDashboardProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'schedule' | 'financials'>('overview');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -52,18 +54,20 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
 
   // 1. Opening Balance
   let openingFees = 0;
+  let openingCredits = 0;
   let openingPayments = 0;
   sessions.forEach(s => {
       const sDate = new Date(s.date);
       if (sDate < currentMonthStart && s.participantIds.some(pid => clientPlayerIds.has(pid))) {
-          const count = s.participantIds.filter(pid => clientPlayerIds.has(pid)).length;
-          openingFees += (s.price || 0) * count;
+          const billing = getSessionBillingForClient(s, clientPlayerIds, dayEvents);
+          openingFees += billing.charge;
+          openingCredits += billing.credit;
       }
   });
   (client.payments || []).forEach(p => {
       if (new Date(p.date) < currentMonthStart) openingPayments += p.amount;
   });
-  const openingBalance = openingFees - openingPayments;
+  const openingBalance = openingFees - openingCredits - openingPayments;
 
   // 2. Current Month Transactions
   const monthlySessions = sessions.filter(s => {
@@ -72,9 +76,11 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
   });
   
   let currentFees = 0;
+  let currentCredits = 0;
   monthlySessions.forEach(s => {
-      const count = s.participantIds.filter(pid => clientPlayerIds.has(pid)).length;
-      currentFees += (s.price || 0) * count;
+      const billing = getSessionBillingForClient(s, clientPlayerIds, dayEvents);
+      currentFees += billing.charge;
+      currentCredits += billing.credit;
   });
   
   const monthlyPayments = (client.payments || []).filter(p => {
@@ -83,12 +89,12 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
   });
   const currentPaymentTotal = monthlyPayments.reduce((acc, p) => acc + p.amount, 0);
   
-  const closingBalance = openingBalance + currentFees - currentPaymentTotal;
+  const closingBalance = openingBalance + currentFees - currentCredits - currentPaymentTotal;
 
   return (
-    <div className="flex flex-col h-screen bg-radial-gradient text-foreground font-sans overflow-hidden">
+    <div className="app-shell flex flex-col h-screen text-foreground font-sans overflow-hidden">
       {/* Top Bar */}
-      <header className="flex items-center justify-between px-6 py-4 bg-background/60 backdrop-blur-xl border-b border-white/5 shadow-sm sticky top-0 z-10 shrink-0">
+      <header className="app-panel-muted app-divider flex items-center justify-between px-6 py-4 border-b shadow-sm sticky top-0 z-10 shrink-0">
         <div className="flex items-center gap-3">
           <img
             src="/vgta-icon.svg"
@@ -115,7 +121,7 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
 
       <div className="flex flex-1 overflow-hidden relative">
         {/* Sidebar Navigation (Desktop) */}
-        <aside className="w-64 bg-card/30 backdrop-blur-sm border-r border-white/5 hidden md:flex flex-col p-4 gap-2">
+        <aside className="app-panel-muted app-divider w-64 border-r hidden md:flex flex-col p-4 gap-2">
             <div className="pb-4">
                <h3 className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2 px-3">Menu</h3>
                <nav className="space-y-1">
@@ -347,7 +353,7 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                  </div>
 
                  {/* Summary Cards */}
-                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                      <div className="glass-card p-4 rounded-xl border-white/5">
                         <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Brought Forward</div>
                         <div className={cn("text-lg font-black font-mono", openingBalance !== 0 ? "text-foreground" : "text-muted-foreground")}>R {openingBalance.toLocaleString()}</div>
@@ -355,6 +361,10 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                      <div className="glass-card p-4 rounded-xl border-white/5">
                         <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Fees (This Month)</div>
                         <div className="text-lg font-black font-mono">R {currentFees.toLocaleString()}</div>
+                     </div>
+                     <div className="glass-card p-4 rounded-xl border-white/5">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Credits</div>
+                        <div className="text-lg font-black font-mono text-blue-400">R {currentCredits.toLocaleString()}</div>
                      </div>
                      <div className="glass-card p-4 rounded-xl border-white/5">
                         <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Paid</div>
@@ -376,13 +386,26 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                     <div className="divide-y divide-white/5">
                        {/* Merge Sessions and Payments for list view */}
                        {[
-                           ...monthlySessions.map(s => ({ 
-                               type: 'session', 
-                               date: s.date, 
-                               desc: `${s.type} Session`, 
-                               amount: (s.price || 0) * s.participantIds.filter(pid => clientPlayerIds.has(pid)).length,
-                               isCredit: false 
-                           })),
+                           ...monthlySessions.flatMap(s => {
+                               const billing = getSessionBillingForClient(s, clientPlayerIds, dayEvents);
+                               if (billing.status === 'rain') return [];
+                               if (billing.status === 'cancelled') {
+                                  return [{
+                                     type: 'credit',
+                                     date: s.date,
+                                     desc: `${s.type} Session (Coach Cancelled Credit)`,
+                                     amount: billing.credit,
+                                     isCredit: true
+                                  }];
+                               }
+                               return [{
+                                  type: 'session',
+                                  date: s.date,
+                                  desc: `${s.type} Session`,
+                                  amount: billing.charge,
+                                  isCredit: false
+                               }];
+                           }),
                            ...monthlyPayments.map(p => ({ 
                                type: 'payment', 
                                date: p.date, 
@@ -392,14 +415,28 @@ export function ClientDashboard({ client, players, sessions, logs, drills, onLog
                            }))
                        ].sort((a,b) => a.date.localeCompare(b.date)).length > 0 ? (
                            [
-                              ...monthlySessions.map(s => ({ 
-                                  id: s.id,
-                                  type: 'session', 
-                                  date: s.date, 
-                                  desc: `${s.type} Session`, 
-                                  amount: (s.price || 0) * s.participantIds.filter(pid => clientPlayerIds.has(pid)).length,
-                                  isCredit: false 
-                              })),
+                              ...monthlySessions.flatMap(s => {
+                                  const billing = getSessionBillingForClient(s, clientPlayerIds, dayEvents);
+                                  if (billing.status === 'rain') return [];
+                                  if (billing.status === 'cancelled') {
+                                    return [{
+                                      id: `credit-${s.id}`,
+                                      type: 'credit',
+                                      date: s.date,
+                                      desc: `${s.type} Session - Coach Cancelled Credit`,
+                                      amount: billing.credit,
+                                      isCredit: true
+                                    }];
+                                  }
+                                  return [{
+                                    id: s.id,
+                                    type: 'session',
+                                    date: s.date,
+                                    desc: `${s.type} Session`,
+                                    amount: billing.charge,
+                                    isCredit: false
+                                  }];
+                              }),
                               ...monthlyPayments.map(p => ({ 
                                   id: p.id,
                                   type: 'payment', 

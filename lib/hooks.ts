@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Player, SessionLog, Drill, DrillCategory, DrillTag, DrillCollection, ProgressGoal, STORAGE_KEYS, DEFAULT_DRILL_CATEGORIES, Client, TrainingSession } from './playbook';
+import { Player, SessionLog, Drill, DrillCategory, DrillTag, DrillCollection, ProgressGoal, STORAGE_KEYS, DEFAULT_DRILL_CATEGORIES, Client, TrainingSession, DayEvent } from './playbook';
 import { getPlayerProgressHistory, calculateMetricTrend, getSessionComparison, getGoalProgress } from './analytics';
+import { getSessionBillingForClient } from './billing';
 
 // ============================================
 // PROGRESS TRACKING HOOKS
@@ -324,6 +325,7 @@ export function useClientFinancials(
   clients: Client[], 
   players: Player[], 
   sessions: TrainingSession[], 
+  dayEvents: DayEvent[] = [],
   currentDate: Date
 ) {
   return useMemo(() => {
@@ -337,14 +339,17 @@ export function useClientFinancials(
 
     const clientFinancials: ClientFinancial[] = clients.map(client => {
       const clientPlayers = players.filter(p => p.clientId === client.id);
+      const clientPlayerIds = new Set(clientPlayers.map((p) => p.id));
       const playerCount = clientPlayers.length;
       const location = clientPlayers[0]?.intel?.location || 'Unknown';
 
       // Calculate Opening Balance (Everything before startOfMonth)
-      const priorFees = sessions.filter(s => 
-        s.date < startOfMonth && 
-        s.participantIds.some(pid => clientPlayers.some(cp => cp.id === pid))
-      ).reduce((sum, s) => sum + s.price, 0);
+      const priorFees = sessions
+        .filter(s => s.date < startOfMonth && s.participantIds.some(pid => clientPlayerIds.has(pid)))
+        .reduce((sum, s) => {
+          const billing = getSessionBillingForClient(s, clientPlayerIds, dayEvents);
+          return sum + billing.net;
+        }, 0);
 
       const priorPayments = (client.payments || [])
         .filter(p => p.date < startOfMonth)
@@ -353,10 +358,12 @@ export function useClientFinancials(
       const openingBalance = priorFees - priorPayments;
 
       // Calculate Monthly Activity
-      const monthlyFees = sessions.filter(s => 
-        s.date >= startOfMonth && s.date <= endOfMonth &&
-        s.participantIds.some(pid => clientPlayers.some(cp => cp.id === pid))
-      ).reduce((sum, s) => sum + s.price, 0);
+      const monthlyFees = sessions
+        .filter(s => s.date >= startOfMonth && s.date <= endOfMonth && s.participantIds.some(pid => clientPlayerIds.has(pid)))
+        .reduce((sum, s) => {
+          const billing = getSessionBillingForClient(s, clientPlayerIds, dayEvents);
+          return sum + billing.net;
+        }, 0);
 
       const monthlyPayments = (client.payments || [])
         .filter(p => p.date >= startOfMonth && p.date <= endOfMonth)
@@ -390,7 +397,7 @@ export function useClientFinancials(
         closingBalance: totalClosing
       }
     };
-  }, [clients, players, sessions, currentDate]);
+  }, [clients, players, sessions, dayEvents, currentDate]);
 }
 
 export function useFilteredClients(
@@ -420,10 +427,16 @@ export function useFilteredClients(
 
 export function useLedgerEntries(
   financials: ClientFinancial[],
-  selectedClientId: string | null
+  selectedClientId: string | null,
+  players: Player[],
+  sessions: TrainingSession[],
+  dayEvents: DayEvent[] = [],
+  currentDate: Date
 ) {
   return useMemo(() => {
     let entries: LedgerEntry[] = [];
+    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
+    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).toISOString().split('T')[0];
 
     // Filter scope
     const scope = selectedClientId 
@@ -432,8 +445,39 @@ export function useLedgerEntries(
 
     // Flatten scope
     scope.forEach(f => {
+      const clientPlayerIds = new Set(players.filter(p => p.clientId === f.client.id).map(p => p.id));
+
+      sessions
+        .filter(s => s.date >= startOfMonth && s.date <= endOfMonth && s.participantIds.some(pid => clientPlayerIds.has(pid)))
+        .forEach(s => {
+          const billing = getSessionBillingForClient(s, clientPlayerIds, dayEvents);
+          if (billing.charge > 0) {
+            entries.push({
+              id: `fee-${f.client.id}-${s.id}`,
+              date: s.date,
+              description: `${s.type} Session Fee`,
+              amount: billing.charge,
+              type: 'fee',
+              clientName: f.client.name,
+              clientId: f.client.id
+            });
+          }
+          if (billing.credit > 0) {
+            entries.push({
+              id: `credit-${f.client.id}-${s.id}`,
+              date: s.date,
+              description: 'Coach Cancelled Credit',
+              amount: -billing.credit,
+              type: 'payment',
+              clientName: f.client.name,
+              clientId: f.client.id
+            });
+          }
+        });
+
       // Payments
       (f.client.payments || []).forEach(p => {
+        if (p.date < startOfMonth || p.date > endOfMonth) return;
         entries.push({
           id: p.id,
           date: p.date,
@@ -447,5 +491,5 @@ export function useLedgerEntries(
     });
 
     return entries.sort((a, b) => b.date.localeCompare(a.date));
-  }, [financials, selectedClientId]);
+  }, [financials, selectedClientId, players, sessions, dayEvents, currentDate]);
 }

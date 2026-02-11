@@ -234,6 +234,43 @@ alter table curriculums enable row level security;
 create policy "Users can manage their own curriculums" on curriculums
   for all using (auth.uid() = user_id);
 
+-- 13. Expenses
+create table expenses (
+  id text primary key,
+  user_id uuid references auth.users not null default auth.uid(),
+  date text not null,
+  category text not null,
+  description text not null,
+  amount numeric not null default 0,
+  created_at bigint,
+  updated_at bigint
+);
+alter table expenses enable row level security;
+create policy "Users can manage their own expenses" on expenses
+  for all using (auth.uid() = user_id);
+
+-- 14. Session Observations
+create table session_observations (
+  id text primary key,
+  user_id uuid references auth.users not null default auth.uid(),
+  player_id text references players(id) on delete cascade,
+  recorded_at bigint not null,
+  session_id text references training_sessions(id) on delete set null,
+  drill_id text references drills(id) on delete set null,
+  drill_outcome text,
+  ratings jsonb not null default '{}'::jsonb,
+  focus_skill text,
+  focus_skill_rating integer,
+  note text,
+  created_at bigint,
+  updated_at bigint
+);
+create index idx_session_observations_player_id on session_observations(player_id);
+create index idx_session_observations_recorded_at on session_observations(recorded_at desc);
+alter table session_observations enable row level security;
+create policy "Users can manage their own session observations" on session_observations
+  for all using (auth.uid() = user_id);
+
 -- MIGRATION: Add missing columns to existing tables
 -- Run these if you have an existing database
 
@@ -241,3 +278,4 @@ create policy "Users can manage their own curriculums" on curriculums
 -- alter table session_logs add column if not exists effort integer;
 -- alter table session_logs add column if not exists is_shared_with_parent boolean default false;
 -- alter table players add column if not exists curriculum_progress jsonb default '[]'::jsonb;
+-- create table if not exists expenses (...);

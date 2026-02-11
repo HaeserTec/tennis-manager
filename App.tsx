@@ -1,5 +1,5 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { Maximize2, Minimize2 } from 'lucide-react';
+import { AlertTriangle, Maximize2, Minimize2 } from 'lucide-react';
 import { PlaybookDiagramV2 } from '@/components/PlaybookDiagramV2';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -146,8 +146,10 @@ export default function App() {
      terms,
      dayEvents, upsertDayEvent, deleteDayEvent,
      expenses, upsertExpense, deleteExpense,
+     sessionObservations, addSessionObservation,
      forceSync,
-     importData
+     importData,
+     syncHealth
   } = useData();
 
   // Coach Profile State
@@ -802,6 +804,7 @@ export default function App() {
               client={client}
               players={players}
               sessions={sessions}
+              dayEvents={dayEvents}
               logs={logs}
               drills={drills}
               onLogout={() => { supabase.auth.signOut(); setCurrentUser(null); }}
@@ -815,7 +818,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen h-[100dvh] w-full bg-background text-foreground overflow-hidden font-sans">
+    <div className="app-shell flex h-screen h-[100dvh] w-full text-foreground overflow-hidden font-sans">
       <div className="no-print">
         <NavigationRail 
            currentMode={appMode} 
@@ -859,7 +862,7 @@ export default function App() {
             ref={listPanelRef}
             style={{ '--list-panel-width': `${listPanelWidth}px` } as React.CSSProperties}
             className={cn(
-              "bg-card/50 border-r border-border flex flex-col shrink-0 relative no-print",
+              "app-panel-muted app-divider border-r flex flex-col shrink-0 relative no-print",
               isResizingListPanel ? "transition-none" : "transition-all",
               hasSelection ? "hidden lg:flex lg:w-[var(--list-panel-width)]" : "w-full lg:w-[var(--list-panel-width)]"
             )}
@@ -1230,9 +1233,27 @@ export default function App() {
 
       {/* Main Content */}
       <div className={cn(
-         "flex-1 flex flex-col min-w-0 bg-background relative",
+         "app-surface flex-1 flex flex-col min-w-0 relative",
          !hasSelection && !isHome && appMode !== 'players' && appMode !== 'office' && appMode !== 'scoreboard' && appMode !== 'library' && appMode !== 'standard' && appMode !== 'templates' ? "hidden lg:flex" : "flex"
       )}>
+         {syncHealth.hasIssues && (
+            <div className="mx-4 mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 app-elevated">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="space-y-1">
+                  <div className="font-semibold text-amber-100">Cloud sync is partially unavailable</div>
+                  <div className="text-amber-200/90">
+                    Some data will stay local until the database schema is fixed.
+                  </div>
+                  {syncHealth.issues.slice(0, 2).map((issue) => (
+                    <div key={issue} className="text-amber-100/90">
+                      {issue}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+         )}
          {isHome ? (
             <HomeDashboard 
                stats={{ drills: drills.length, plans: plans.length, sequences: sequences.length, players: players.length }}
@@ -1266,7 +1287,8 @@ export default function App() {
                 sessions={sessions}
                 dayEvents={dayEvents}
                 expenses={expenses}
-                onUpdatePlayer={updatePlayer}
+                sessionObservations={sessionObservations}
+                onAddSessionObservation={addSessionObservation}
                 onUpsertClient={upsertClient}
                 onDeleteClient={deleteClient}
                 onMergeClients={mergeClients}
@@ -1293,6 +1315,8 @@ export default function App() {
                drills={drills} 
                clients={clients} 
                sessions={sessions}
+               dayEvents={dayEvents}
+               sessionObservations={sessionObservations}
                initialSelectedPlayerId={pendingPlayerId}
                onUpdatePlayer={updatePlayer}
                onAddPlayer={addPlayer}
@@ -1533,6 +1557,7 @@ export default function App() {
          onForceSync={forceSync}
          onBackup={handleBackup}
          onImport={importData}
+         syncHealth={syncHealth}
       />
 
       {/* COACH PROFILE MODAL */}

@@ -61,7 +61,7 @@ export function MobileFAB({
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 lg:hidden flex flex-col items-end gap-3 font-sans">
+    <div className="fixed bottom-4 right-4 z-50 lg:hidden flex flex-col items-end gap-3 font-sans">
       {/* Backdrop for click-away */}
       {isOpen && (
         <div 
@@ -184,7 +184,7 @@ export function MobileFAB({
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "h-14 w-14 rounded-full shadow-[0_0_20px_-5px_rgba(0,0,0,0.5)] flex items-center justify-center transition-all duration-300 z-50 border border-border",
+          "h-16 w-16 rounded-full shadow-[0_0_20px_-5px_rgba(0,0,0,0.5)] flex items-center justify-center transition-all duration-300 z-50 border border-border touch-manipulation",
           isOpen ? "bg-secondary text-muted-foreground rotate-90" : "bg-primary text-primary-foreground hover:bg-primary/90"
         )}
         aria-label="Navigation Menu"
@@ -200,7 +200,7 @@ function FabItem({ label, icon, onClick, active, color }: any) {
     <button
       onClick={onClick}
       className={cn(
-        "flex items-center gap-3 pl-4 pr-2 py-2 rounded-full shadow-lg border border-border transition-all active:scale-95",
+        "flex items-center gap-3 pl-4 pr-2.5 py-2.5 rounded-full shadow-lg border border-border transition-all active:scale-95 touch-manipulation",
         active ? "bg-secondary ring-1 ring-primary/20" : "bg-card hover:bg-secondary"
       )}
     >

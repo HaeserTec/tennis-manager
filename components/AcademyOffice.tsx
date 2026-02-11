@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn, nanoid } from '@/lib/utils';
-import type { Player, Client, Payment, TrainingSession, SessionType, LocationConfig, DayEvent, DayEventType, Expense, Drill } from '@/lib/playbook';
+import type { Player, Client, Payment, TrainingSession, SessionType, LocationConfig, DayEvent, DayEventType, Expense, Drill, SessionObservation } from '@/lib/playbook';
 import {
   Check, X, Phone, Search, Calendar as CalendarIcon, Users,
   Activity, Plus, Clock, FileText, Briefcase, DollarSign,
@@ -16,7 +16,7 @@ import { ClientEditPanel } from '@/components/ClientEditPanel';
 import { SessionEditPanel } from '@/components/SessionEditPanel';
 import { AccountsStatement } from '@/components/AccountsStatement';
 import { FinancialWorkspace } from '@/components/office/FinancialWorkspace';
-import { SessionBlueprint } from '@/components/session/SessionBlueprint';
+import { LiveSessionCompanion } from '@/components/session/LiveSessionCompanion';
 
 interface AcademyOfficeProps {
   players: Player[];
@@ -26,7 +26,8 @@ interface AcademyOfficeProps {
   sessions: TrainingSession[];
   dayEvents: DayEvent[];
   expenses: Expense[];
-  onUpdatePlayer: (player: Player) => void;
+  sessionObservations: SessionObservation[];
+  onAddSessionObservation: (observation: SessionObservation) => void;
   onUpsertClient: (client: Client) => void;
   onDeleteClient?: (clientId: string) => void;
   onMergeClients?: (sourceId: string, targetId: string) => void;
@@ -68,7 +69,7 @@ const getLocalISODate = (date: Date): string => {
 
 export function AcademyOffice({
   players, drills, locations, clients, sessions, dayEvents = [], expenses = [],
-  onUpdatePlayer, onUpsertClient, onDeleteClient, onMergeClients,
+  sessionObservations, onAddSessionObservation, onUpsertClient, onDeleteClient, onMergeClients,
   onUpsertSession, onDeleteSession,
   upsertDayEvent, deleteDayEvent,
   upsertExpense, deleteExpense,
@@ -78,8 +79,8 @@ export function AcademyOffice({
   const [editingClient, setEditingClient] = useState<Client | null>(null);
 
   return (
-    <div className="flex flex-col h-full bg-radial-gradient overflow-hidden">
-      <div className="h-16 shrink-0 border-b border-white/5 bg-background/60 backdrop-blur-xl flex items-center justify-between px-6 z-20 overflow-x-auto no-scrollbar gap-4">
+    <div className="app-page flex flex-col h-full overflow-hidden">
+      <div className="app-topbar min-h-16 shrink-0 flex items-center justify-between px-3 sm:px-6 py-2 sm:py-0 z-20 overflow-x-auto no-scrollbar gap-3 sm:gap-4">
         <div className="flex items-center gap-4 shrink-0">
            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 p-[1px] shadow-lg glow-primary">
               <div className="h-full w-full rounded-[11px] bg-background/20 backdrop-blur-sm flex items-center justify-center text-white">
@@ -87,12 +88,12 @@ export function AcademyOffice({
               </div>
            </div>
            <div className="hidden sm:block">
-              <h1 className="text-lg font-black uppercase tracking-tighter text-gradient">Admin</h1>
-              <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] opacity-60">Office Management</p>
+              <h1 className="app-heading-md app-title uppercase text-gradient">Admin</h1>
+              <p className="app-kicker opacity-80">Office Management</p>
            </div>
         </div>
 
-        <nav className="flex items-center gap-1.5 glass p-1.5 rounded-2xl border border-white/5 shrink-0">
+        <nav className="app-panel-muted flex items-center gap-1 p-1 rounded-xl sm:rounded-2xl shrink-0">
            <NavTab id="insights" label="Insights" icon={<Activity className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
            <NavTab id="scheduler" label="Scheduler" icon={<CalendarIcon className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
            <NavTab id="blueprint" label="Blueprint" icon={<MapPin className="w-4 h-4"/>} active={activeTab} onClick={setActiveTab} />
@@ -118,12 +119,13 @@ export function AcademyOffice({
             />
          </div>
          <div className={cn("h-full w-full", activeTab !== 'blueprint' && "hidden")}>
-            <SessionBlueprint 
-               drills={drills}
+            <LiveSessionCompanion
                players={players}
-               existingSessions={sessions}
-               onCreateSessions={(newSessions) => newSessions.forEach(onUpsertSession)}
+               drills={drills}
+               sessions={sessions}
                locations={locations.map(l => l.name)}
+               sessionObservations={sessionObservations}
+               onAddObservation={onAddSessionObservation}
             />
          </div>
          <div className={cn("h-full w-full", activeTab !== 'financials' && "hidden")}>
@@ -131,12 +133,13 @@ export function AcademyOffice({
                clients={clients}
                players={players}
                sessions={sessions}
+               dayEvents={dayEvents}
                onUpsertClient={onUpsertClient}
                onEditClient={setEditingClient}
             />
          </div>
          <div className={cn("h-full w-full", activeTab !== 'bookings' && "hidden")}>
-            <AccountsStatement clients={clients} players={players} sessions={sessions} />
+            <AccountsStatement clients={clients} players={players} sessions={sessions} dayEvents={dayEvents} />
          </div>
          <div className={cn("h-full w-full", activeTab !== 'expenses' && "hidden")}>
             <ExpenseTracker expenses={expenses} upsertExpense={upsertExpense} deleteExpense={deleteExpense} />
@@ -149,6 +152,7 @@ export function AcademyOffice({
           players={players}
           allClients={clients}
           sessions={sessions}
+          dayEvents={dayEvents}
           isOpen={true}
           onClose={() => setEditingClient(null)}
           onSave={(updated) => {
@@ -214,8 +218,8 @@ function ExpenseTracker({ expenses, upsertExpense, deleteExpense }: { expenses: 
       <div className="p-8 max-w-5xl mx-auto h-full flex flex-col relative">
          <div className="flex items-center justify-between mb-8 shrink-0">
             <div>
-               <h2 className="text-3xl font-black">Expense Tracker</h2>
-               <p className="text-sm text-muted-foreground">Manage operational costs</p>
+               <h2 className="app-heading-lg app-title">Expense Tracker</h2>
+               <p className="app-muted-readable text-sm">Manage operational costs</p>
             </div>
             <div className="flex items-center gap-4">
                <div className="relative">
@@ -224,7 +228,7 @@ function ExpenseTracker({ expenses, upsertExpense, deleteExpense }: { expenses: 
                      placeholder="Search expenses..." 
                      value={q} 
                      onChange={e => setQ(e.target.value)} 
-                     className="pl-9 w-64 bg-card/50 border-border" 
+                     className="pl-9 w-64 app-card border-border" 
                   />
                </div>
                <Button onClick={() => setIsAddOpen(true)} className="gap-2 font-bold shadow-lg shadow-primary/20 bg-rose-500 hover:bg-rose-600 text-white">
@@ -233,8 +237,8 @@ function ExpenseTracker({ expenses, upsertExpense, deleteExpense }: { expenses: 
             </div>
          </div>
 
-         <div className="flex-1 overflow-hidden border border-border rounded-2xl bg-card/30 backdrop-blur-sm flex flex-col">
-            <div className="grid grid-cols-[120px_1fr_2fr_1fr_60px] gap-4 p-4 border-b border-border bg-card/50 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+         <div className="app-card flex-1 overflow-hidden rounded-2xl flex flex-col">
+            <div className="app-table-head grid grid-cols-[120px_1fr_2fr_1fr_60px] gap-4 px-4 py-3">
                <div className="cursor-pointer hover:text-foreground flex items-center gap-1" onClick={() => setSortDesc(!sortDesc)}>
                   Date {sortDesc ? <ChevronLeft className="w-3 h-3 -rotate-90" /> : <ChevronLeft className="w-3 h-3 rotate-90" />}
                </div>
@@ -245,13 +249,13 @@ function ExpenseTracker({ expenses, upsertExpense, deleteExpense }: { expenses: 
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar">
                {filteredExpenses.map(e => (
-                  <div key={e.id} className="grid grid-cols-[120px_1fr_2fr_1fr_60px] gap-4 p-4 border-b border-border/50 hover:bg-card/50 transition-colors items-center text-sm">
-                     <div className="font-mono text-muted-foreground">{e.date}</div>
-                     <div className="font-bold text-xs uppercase tracking-wide opacity-80">{e.category}</div>
-                     <div className="truncate text-muted-foreground">{e.description || '-'}</div>
+                  <div key={e.id} className="app-table-row grid grid-cols-[120px_1fr_2fr_1fr_60px] gap-4 px-4 py-3.5 items-center text-sm">
+                     <div className="font-mono text-muted-foreground/90">{e.date}</div>
+                     <div className="font-semibold text-xs uppercase tracking-wide text-foreground/85">{e.category}</div>
+                     <div className="truncate text-muted-foreground/90">{e.description || '-'}</div>
                      <div className="text-right font-mono font-bold text-rose-400">R {e.amount.toLocaleString()}</div>
                      <div className="text-center">
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-rose-500" onClick={() => { if(confirm('Delete expense?')) deleteExpense(e.id); }}>
+                        <Button variant="ghost" size="icon" className="tap-target-icon h-9 w-9 sm:h-7 sm:w-7 text-muted-foreground hover:text-rose-500" onClick={() => { if(confirm('Delete expense?')) deleteExpense(e.id); }}>
                            <Trash2 className="w-3 h-3" />
                         </Button>
                      </div>
@@ -268,7 +272,7 @@ function ExpenseTracker({ expenses, upsertExpense, deleteExpense }: { expenses: 
                <div className="w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
                   <div className="p-6 border-b border-border flex items-center justify-between">
                      <h3 className="text-xl font-black tracking-tight">Add Expense</h3>
-                     <Button variant="ghost" size="icon" onClick={() => setIsAddOpen(false)}><X className="w-5 h-5" /></Button>
+                     <Button variant="ghost" size="icon" className="tap-target-icon" onClick={() => setIsAddOpen(false)}><X className="w-5 h-5" /></Button>
                   </div>
                   
                   <div className="p-6 space-y-6">
@@ -320,7 +324,7 @@ function NavTab({ id, label, icon, active, onClick }: { id: Tab, label: string, 
       <button
          onClick={() => onClick(id)}
          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all shrink-0",
+            "tap-target flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wide sm:tracking-wider transition-all shrink-0",
             active === id ? "bg-background shadow-lg text-primary ring-1 ring-white/10 scale-105" : "text-muted-foreground hover:text-foreground hover:bg-background/50"
          )}
       >
@@ -374,6 +378,22 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
       });
       return map;
    }, [events]);
+
+   const setDayStatus = useCallback((dateStr: string, type: 'Rain' | 'Coach Cancelled' | null) => {
+      const existing = dayEvents.find((event: DayEvent) => event.date === dateStr);
+      if (type === null) {
+         if (existing) deleteDayEvent(existing.id);
+         return;
+      }
+      upsertDayEvent({
+         id: existing?.id || nanoid(),
+         date: dateStr,
+         type,
+         note: existing?.note,
+         createdAt: existing?.createdAt || Date.now(),
+         updatedAt: Date.now()
+      });
+   }, [dayEvents, upsertDayEvent, deleteDayEvent]);
 
 
 
@@ -646,13 +666,13 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
                <div className="flex items-center justify-between mb-4">
                   <span className="text-sm font-bold">{currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
                   <div className="flex gap-1">
-                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}><ChevronLeft className="w-4 h-4"/></Button>
-                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}><ChevronRight className="w-4 h-4"/></Button>
+                     <Button variant="ghost" size="icon" className="tap-target-icon h-9 w-9 sm:h-7 sm:w-7" onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}><ChevronLeft className="w-4 h-4"/></Button>
+                     <Button variant="ghost" size="icon" className="tap-target-icon h-9 w-9 sm:h-7 sm:w-7" onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}><ChevronRight className="w-4 h-4"/></Button>
                   </div>
                </div>
                <div className="grid grid-cols-7 gap-1">
                   {generateCalendarDays(currentDate).map((d, i) => (
-                     <button key={i} onClick={() => setCurrentDate(d.date)} className={cn("h-7 w-7 rounded-md text-[10px] flex items-center justify-center transition-all relative", !d.inMonth && "opacity-20", d.isToday && "text-primary font-bold ring-1 ring-primary", d.date.toDateString() === currentDate.toDateString() && "bg-primary text-primary-foreground shadow-md")}>
+                     <button key={i} onClick={() => setCurrentDate(d.date)} className={cn("h-8 w-8 sm:h-7 sm:w-7 rounded-md text-[10px] flex items-center justify-center transition-all relative touch-manipulation", !d.inMonth && "opacity-20", d.isToday && "text-primary font-bold ring-1 ring-primary", d.date.toDateString() === currentDate.toDateString() && "bg-primary text-primary-foreground shadow-md")}>
                         {d.day}
                      </button>
                   ))}
@@ -693,8 +713,8 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
             <div className="h-16 border-b border-border/50 flex items-center justify-between px-4 md:px-6 bg-card/10 gap-2">
                <div className="flex items-center gap-4">
                   <div className="flex gap-1">
-                     <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.setDate(currentDate.getDate() - (viewMode==='week'?7:1))))}><ChevronLeft className="w-4 h-4" /></Button>
-                     <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.setDate(currentDate.getDate() + (viewMode==='week'?7:1))))}><ChevronRight className="w-4 h-4" /></Button>
+                     <Button variant="outline" size="icon" className="tap-target-icon" onClick={() => setCurrentDate(new Date(currentDate.setDate(currentDate.getDate() - (viewMode==='week'?7:1))))}><ChevronLeft className="w-4 h-4" /></Button>
+                     <Button variant="outline" size="icon" className="tap-target-icon" onClick={() => setCurrentDate(new Date(currentDate.setDate(currentDate.getDate() + (viewMode==='week'?7:1))))}><ChevronRight className="w-4 h-4" /></Button>
                   </div>
                   <h2 className="text-xl font-bold">{currentDate.toLocaleString('default', { month: 'long', day: 'numeric' })}</h2>
                </div>
@@ -704,7 +724,7 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
             </div>
 
             <div className="flex-1 overflow-auto bg-card/5 relative">
-               {viewMode === 'week' && <WeekView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} weekDays={getWeekDays(currentDate)} onDrop={handleDrop} onEdit={handleEditSession} onRemovePlayer={handleRemovePlayerFromSession} onDragSession={setDraggedSessionId} onResizeStart={handleResizeStart} onCellClick={handleCellClick} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
+               {viewMode === 'week' && <WeekView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} weekDays={getWeekDays(currentDate)} onDrop={handleDrop} onEdit={handleEditSession} onRemovePlayer={handleRemovePlayerFromSession} onDragSession={setDraggedSessionId} onResizeStart={handleResizeStart} onCellClick={handleCellClick} onSetDayStatus={setDayStatus} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
                {viewMode === 'month' && <MonthView currentDate={currentDate} events={events} dayEvents={dayEvents} location={selectedLocation} onEdit={handleEditSession} />}
                {viewMode === 'day' && <DayView currentDate={currentDate} sessionMap={sessionMap} dayEvents={dayEvents} onDrop={handleDrop} onEdit={handleEditSession} onRemovePlayer={handleRemovePlayerFromSession} onResizeStart={handleResizeStart} onCellClick={handleCellClick} location={selectedLocation} startHour={START_HOUR} endHour={END_HOUR} />}
             </div>
@@ -731,17 +751,74 @@ function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUp
    );
 }
 
-function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemovePlayer, onDragSession, onResizeStart, onCellClick, location, startHour, endHour }: any) {
-   // Use FIXED 1-hour blocks for the grid background
+function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemovePlayer, onDragSession, onResizeStart, onCellClick, onSetDayStatus, location, startHour, endHour }: any) {
+   const MIN_ROW_HEIGHT = 28;
+   const SESSION_CHROME_HEIGHT = 30;
+   const PLAYER_LINE_HEIGHT = 14;
+
+   const weekSessionsByDate = useMemo(() => {
+      const map = new Map<string, any[]>();
+      weekDays.forEach((day: Date) => {
+         const dateStr = getLocalISODate(day);
+         const daySessions = Array.from(sessionMap.entries())
+            .filter(([key]) => key.startsWith(`${dateStr}::`))
+            .flatMap(([, s]) => s)
+            .filter((s, idx, self) => self.findIndex(x => x.id === s.id) === idx);
+         map.set(dateStr, daySessions);
+      });
+      return map;
+   }, [weekDays, sessionMap]);
+
    const blocks = useMemo(() => {
-      const b = [];
-      for(let h = startHour; h < endHour; h++) {
+      const b: Array<{ hour: number; time: string; top: number; heightPx: number }> = [];
+      let runningTop = 0;
+      for (let h = startHour; h < endHour; h++) {
+         const hourStart = h * 60;
+         const hourEnd = hourStart + 60;
+         let maxPlayersInHour = 0;
+
+         weekDays.forEach((day: Date) => {
+            const dateStr = getLocalISODate(day);
+            const daySessions = weekSessionsByDate.get(dateStr) || [];
+            daySessions.forEach((session: any) => {
+               const [startH, startM] = session.startTime.split(':').map(Number);
+               const [endH, endM] = session.endTime.split(':').map(Number);
+               const sessionStart = startH * 60 + startM;
+               const sessionEnd = endH * 60 + endM;
+               const overlapsHour = sessionStart < hourEnd && sessionEnd > hourStart;
+               if (overlapsHour) {
+                  maxPlayersInHour = Math.max(maxPlayersInHour, session.participantIds.length);
+               }
+            });
+         });
+
+         const dynamicHeight = maxPlayersInHour === 0
+            ? MIN_ROW_HEIGHT
+            : Math.max(MIN_ROW_HEIGHT, SESSION_CHROME_HEIGHT + (maxPlayersInHour * PLAYER_LINE_HEIGHT) + 14);
+
          const hh = String(h).padStart(2, '0');
-         const time = `${hh}:00`; 
-         b.push({ time, rowHeight: 'h-24' }); // 96px per hour
+         b.push({ hour: h, time: `${hh}:00`, top: runningTop, heightPx: dynamicHeight });
+         runningTop += dynamicHeight;
       }
       return b;
-   }, [startHour, endHour]);
+   }, [startHour, endHour, weekDays, weekSessionsByDate]);
+
+   const totalHeight = useMemo(
+      () => blocks.reduce((sum, block) => sum + block.heightPx, 0),
+      [blocks]
+   );
+
+   const getOffsetFromMinutes = useCallback((minutesFromDayStart: number) => {
+      if (blocks.length === 0) return 0;
+      const firstHour = blocks[0].hour;
+      const lastHour = blocks[blocks.length - 1].hour + 1;
+      const clamped = Math.min(Math.max(minutesFromDayStart, firstHour * 60), lastHour * 60);
+      const block = blocks.find((entry) => clamped >= (entry.hour * 60) && clamped <= ((entry.hour + 1) * 60))
+         || blocks[blocks.length - 1];
+      const blockStart = block.hour * 60;
+      const progress = Math.min(1, Math.max(0, (clamped - blockStart) / 60));
+      return block.top + (block.heightPx * progress);
+   }, [blocks]);
 
    return (
       <div className="min-w-[640px] h-full flex flex-col relative">
@@ -750,8 +827,33 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
             {weekDays.map((day: Date, i: number) => {
                const dateStr = getLocalISODate(day), dayEvent = dayEvents.find((e: any) => e.date === dateStr);
                return (
-                  <div key={i} className={cn("py-3 text-center border-r border-border/50 relative overflow-hidden", day.toDateString() === new Date().toDateString() && "bg-primary/5", dayEvent?.type === 'Rain' && "bg-blue-500/10", dayEvent?.type === 'Coach Cancelled' && "bg-red-500/10")}>
+                  <div key={i} className={cn("py-3 text-center border-r border-border/50 relative overflow-hidden group/day", day.toDateString() === new Date().toDateString() && "bg-primary/5", dayEvent?.type === 'Rain' && "bg-blue-500/10", dayEvent?.type === 'Coach Cancelled' && "bg-red-500/10")}>
                      {dayEvent && <div className={cn("absolute inset-0 flex items-center justify-center opacity-20", dayEvent.type === 'Rain' ? "text-blue-500" : "text-red-500")}>{dayEvent.type === 'Rain' ? <CloudRain className="w-8 h-8" /> : <Ban className="w-8 h-8" />}</div>}
+                     <div className="absolute right-1 top-1 z-20 flex gap-1 opacity-0 group-hover/day:opacity-100 transition-opacity">
+                        <button
+                           onClick={() => onSetDayStatus(dateStr, 'Rain')}
+                           className={cn("h-5 w-5 rounded border flex items-center justify-center", dayEvent?.type === 'Rain' ? "bg-blue-500/30 border-blue-500 text-blue-200" : "bg-background/80 border-border text-blue-400 hover:bg-blue-500/20")}
+                           title="Mark Rain (No credit)"
+                        >
+                           <CloudRain className="w-3 h-3" />
+                        </button>
+                        <button
+                           onClick={() => onSetDayStatus(dateStr, 'Coach Cancelled')}
+                           className={cn("h-5 w-5 rounded border flex items-center justify-center", dayEvent?.type === 'Coach Cancelled' ? "bg-red-500/30 border-red-500 text-red-100" : "bg-background/80 border-border text-red-400 hover:bg-red-500/20")}
+                           title="Mark Cancelled (Credit)"
+                        >
+                           <Ban className="w-3 h-3" />
+                        </button>
+                        {dayEvent && (
+                           <button
+                              onClick={() => onSetDayStatus(dateStr, null)}
+                              className="h-5 w-5 rounded border bg-background/80 border-border text-muted-foreground hover:text-foreground"
+                              title="Clear day status"
+                           >
+                              <X className="w-3 h-3" />
+                           </button>
+                        )}
+                     </div>
                      <div className="text-[10px] font-bold text-muted-foreground uppercase">{day.toLocaleDateString('en-US', { weekday: 'short' })}</div>
                      <div className={cn("text-lg font-black", day.toDateString() === new Date().toDateString() ? "text-primary" : "text-foreground")}>{day.getDate()}</div>
                      {dayEvent && <div className={cn("text-[8px] font-black uppercase tracking-widest", dayEvent.type === 'Rain' ? "text-blue-400" : "text-red-400")}>{dayEvent.type === 'Rain' ? "Rain Out" : "Cancelled"}</div>}
@@ -770,8 +872,12 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
             
             {/* Time Rows */}
             {blocks.map((block: any) => (
-               <div key={block.time} className={cn("grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 relative z-0", block.rowHeight)}>
-                  <div className="border-r border-border/50 flex justify-center items-start pt-2 bg-card/10 text-[10px] font-mono text-muted-foreground">{block.time}</div>
+               <div
+                  key={block.time}
+                  className="grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 relative z-0"
+                  style={{ height: `${block.heightPx}px` }}
+               >
+                  <div className="border-r border-border/50 flex justify-center items-start pt-1 bg-card/10 text-[10px] font-mono text-muted-foreground">{block.time}</div>
                   {weekDays.map((day: Date, i: number) => (
                      <div 
                         key={i} 
@@ -793,14 +899,11 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
             ))}
 
             {/* Absolute Sessions Layer */}
-            <div className="absolute inset-0 pointer-events-none grid grid-cols-[4rem_repeat(7,1fr)] z-10">
+            <div className="absolute left-0 right-0 top-0 pointer-events-none grid grid-cols-[4rem_repeat(7,1fr)] z-10" style={{ height: `${totalHeight}px` }}>
                <div /> {/* Time column padding */}
                {weekDays.map((day: Date, dayIdx: number) => {
                   const dateStr = getLocalISODate(day);
-                  const daySessions = Array.from(sessionMap.entries())
-                     .filter(([key]) => key.startsWith(`${dateStr}::`))
-                     .flatMap(([, s]) => s)
-                     .filter((s, idx, self) => self.findIndex(x => x.id === s.id) === idx);
+                  const daySessions = weekSessionsByDate.get(dateStr) || [];
 
                   return (
                      <div key={dayIdx} className="relative h-full pointer-events-none">
@@ -811,9 +914,9 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
                            const startOffsetMins = (startH * 60 + startM) - (startHour * 60);
                            const durationMins = (endH * 60 + endM) - (startH * 60 + startM);
                            
-                           // 96px per hour -> 1.6px per minute
-                           const top = (startOffsetMins / 60) * 96; 
-                           const height = (durationMins / 60) * 96;
+                           const top = getOffsetFromMinutes((startHour * 60) + startOffsetMins);
+                           const end = getOffsetFromMinutes((startHour * 60) + startOffsetMins + durationMins);
+                           const height = Math.max(24, end - top);
 
                            return (
                               <div 
@@ -900,21 +1003,61 @@ function MonthView({ currentDate, events, dayEvents = [], location, onEdit }: an
 function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, onEdit, onRemovePlayer, onResizeStart, onCellClick, location, startHour, endHour }: any) {
    const dateStr = getLocalISODate(currentDate), dayEvent = dayEvents.find((e: any) => e.date === dateStr);
    
-   // Use FIXED 1-hour blocks for the grid background
-   const blocks = useMemo(() => {
-      const b = [];
-      for(let h = startHour; h < endHour; h++) {
-         const hh = String(h).padStart(2, '0');
-         const time = `${hh}:00`; 
-         b.push({ time, rowHeight: 'h-24' }); // 96px per hour
-      }
-      return b;
-   }, [startHour, endHour]);
-   
    const daySessions = Array.from(sessionMap.entries())
       .filter(([key]) => key.startsWith(`${dateStr}::`))
       .flatMap(([, s]) => s)
       .filter((s, idx, self) => self.findIndex(x => x.id === s.id) === idx);
+
+   const MIN_ROW_HEIGHT = 28;
+   const SESSION_CHROME_HEIGHT = 40;
+   const PLAYER_LINE_HEIGHT = 24;
+
+   const blocks = useMemo(() => {
+      const b: Array<{ hour: number; time: string; top: number; heightPx: number }> = [];
+      let runningTop = 0;
+      for (let h = startHour; h < endHour; h++) {
+         const hourStart = h * 60;
+         const hourEnd = hourStart + 60;
+         let maxPlayersInHour = 0;
+
+         daySessions.forEach((session: any) => {
+            const [startH, startM] = session.startTime.split(':').map(Number);
+            const [endH, endM] = session.endTime.split(':').map(Number);
+            const sessionStart = startH * 60 + startM;
+            const sessionEnd = endH * 60 + endM;
+            const overlapsHour = sessionStart < hourEnd && sessionEnd > hourStart;
+            if (overlapsHour) {
+               maxPlayersInHour = Math.max(maxPlayersInHour, session.participantIds.length);
+            }
+         });
+
+         const dynamicHeight = maxPlayersInHour === 0
+            ? MIN_ROW_HEIGHT
+            : Math.max(MIN_ROW_HEIGHT, SESSION_CHROME_HEIGHT + (maxPlayersInHour * PLAYER_LINE_HEIGHT) + 18);
+
+         const hh = String(h).padStart(2, '0');
+         b.push({ hour: h, time: `${hh}:00`, top: runningTop, heightPx: dynamicHeight });
+         runningTop += dynamicHeight;
+      }
+      return b;
+   }, [startHour, endHour, daySessions]);
+
+   const totalHeight = useMemo(
+      () => blocks.reduce((sum, block) => sum + block.heightPx, 0),
+      [blocks]
+   );
+
+   const getOffsetFromMinutes = useCallback((minutesFromDayStart: number) => {
+      if (blocks.length === 0) return 0;
+      const firstHour = blocks[0].hour;
+      const lastHour = blocks[blocks.length - 1].hour + 1;
+      const clamped = Math.min(Math.max(minutesFromDayStart, firstHour * 60), lastHour * 60);
+      const block = blocks.find((entry) => clamped >= (entry.hour * 60) && clamped <= ((entry.hour + 1) * 60))
+         || blocks[blocks.length - 1];
+      const blockStart = block.hour * 60;
+      const progress = Math.min(1, Math.max(0, (clamped - blockStart) / 60));
+      return block.top + (block.heightPx * progress);
+   }, [blocks]);
 
    return (
       <div className="max-w-3xl mx-auto h-full p-4 relative">
@@ -923,7 +1066,8 @@ function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, onEdit, onRe
             {blocks.map((block: any) => (
                <div 
                   key={block.time} 
-                  className={cn("flex border-b border-border/50", block.rowHeight, "relative group/cell")} 
+                  className="flex border-b border-border/50 relative group/cell"
+                  style={{ height: `${block.heightPx}px` }}
                   onDragOver={e => e.preventDefault()} 
                   onDrop={e => onDrop(e, currentDate, block.time)}
                >
@@ -942,7 +1086,7 @@ function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, onEdit, onRe
             ))}
 
             {/* Absolute Sessions Layer */}
-            <div className="absolute inset-0 pointer-events-none flex">
+            <div className="absolute left-0 right-0 top-0 pointer-events-none flex" style={{ height: `${totalHeight}px` }}>
                <div className="w-20 shrink-0" />
                <div className="flex-1 relative">
                   {daySessions.map((s: any) => {
@@ -952,9 +1096,9 @@ function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, onEdit, onRe
                      const startOffsetMins = (startH * 60 + startM) - (startHour * 60);
                      const durationMins = (endH * 60 + endM) - (startH * 60 + startM);
                      
-                     // 96px per hour -> 1.6px per minute
-                     const top = (startOffsetMins / 60) * 96; 
-                     const height = (durationMins / 60) * 96;
+                     const top = getOffsetFromMinutes((startHour * 60) + startOffsetMins);
+                     const end = getOffsetFromMinutes((startHour * 60) + startOffsetMins + durationMins);
+                     const height = Math.max(32, end - top);
 
                      return (
                         <div 
@@ -1010,6 +1154,3 @@ function generateCalendarDays(date: Date) {
    while (days.length % 7 !== 0) days.push({ day: new Date(y, m, days.length - startPadding + 1).getDate(), inMonth: false, date: new Date(y, m, days.length - startPadding + 1) });
    return days;
 }
-
-
-

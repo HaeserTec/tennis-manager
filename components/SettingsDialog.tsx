@@ -3,8 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn, nanoid } from '@/lib/utils';
-import { X, MapPin, Plus, Trash2, Settings, Globe, RefreshCw, Cloud, Download, Upload } from 'lucide-react';
+import { X, MapPin, Plus, Trash2, Settings, Globe, RefreshCw, Cloud, Download, Upload, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import type { SessionType, LocationConfig } from '@/lib/playbook';
+import type { SyncHealthStatus } from '@/lib/sync-health';
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -16,9 +17,10 @@ interface SettingsDialogProps {
   onForceSync?: () => Promise<void>;
   onBackup?: () => void;
   onImport?: (data: any) => void;
+  syncHealth?: SyncHealthStatus;
 }
 
-export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, theme, onSetTheme, onForceSync, onBackup, onImport }: SettingsDialogProps) {
+export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, theme, onSetTheme, onForceSync, onBackup, onImport, syncHealth }: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<'general' | 'academy'>('academy');
   const [newLocName, setNewLocName] = useState('');
   const [newLocRate, setNewLocRate] = useState('');
@@ -256,6 +258,50 @@ export function SettingsDialog({ isOpen, onClose, locations, onUpdateLocations, 
                        {isSyncing ? 'Syncing...' : 'Sync Now'}
                     </Button>
                   </div>
+                </div>
+
+                <div className={cn(
+                  "flex flex-col gap-3 p-4 rounded-xl border",
+                  syncHealth?.hasIssues
+                    ? "border-amber-500/40 bg-amber-500/10"
+                    : "border-emerald-500/40 bg-emerald-500/10"
+                )}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-sm flex items-center gap-2">
+                        {syncHealth?.hasIssues ? (
+                          <AlertTriangle className="w-4 h-4 text-amber-400" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        )}
+                        Sync Health
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {syncHealth?.hasIssues
+                          ? "Schema issues detected. Affected data stays local until fixed."
+                          : "Cloud schema is healthy."}
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleSync}
+                      disabled={isSyncing}
+                      className="gap-2"
+                    >
+                      <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
+                      {isSyncing ? 'Checking...' : 'Retry Check'}
+                    </Button>
+                  </div>
+                  {syncHealth?.hasIssues && (
+                    <div className="space-y-1 text-xs">
+                      {syncHealth.issues.map((issue) => (
+                        <div key={issue} className="text-amber-100/90">
+                          {issue}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-4 p-4 rounded-xl border border-border bg-card/40">

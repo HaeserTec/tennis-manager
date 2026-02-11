@@ -1,10 +1,17 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import {
   Drill, DrillTemplate, Sequence, SessionPlan, Player, Client, TrainingSession,
-  LocationConfig, SessionLog, Term, DayEvent, Expense, DEFAULT_DRILLS
+  LocationConfig, SessionLog, Term, DayEvent, Expense, SessionObservation, DEFAULT_DRILLS
 } from './playbook';
 import { nanoid, safeJsonParse, nowMs, getPathLength } from './utils';
 import { supabase } from './supabase';
+import {
+  EMPTY_SYNC_HEALTH,
+  SyncHealthStatus,
+  classifySchemaIssue,
+  mergeSchemaIssue,
+  sanitizeRecordForTable,
+} from './sync-health';
 
 // Check if Supabase is configured
 const isSupabaseEnabled = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
@@ -53,23 +60,22 @@ function normalizeTemplate(t: DrillTemplate): DrillTemplate {
     }
 }
 
+function normalizeSessionObservation(observation: SessionObservation): SessionObservation {
+    const now = nowMs();
+    return {
+      ...observation,
+      id: observation.id ?? nanoid(),
+      playerId: observation.playerId,
+      recordedAt: observation.recordedAt ?? now,
+      ratings: observation.ratings ?? {},
+      createdAt: (observation as any).createdAt ?? now,
+      updatedAt: (observation as any).updatedAt ?? now,
+    } as SessionObservation;
+}
+
 // --- Context Types ---
 
-// Helper to convert strings
-const toSnakeCase = (str: string) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 const toCamelCase = (str: string) => str.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-
-const transformData = (obj: any, transformer: (s: string) => string): any => {
-    if (Array.isArray(obj)) return obj.map(v => transformData(v, transformer));
-    if (obj !== null && typeof obj === 'object') {
-        return Object.keys(obj).reduce((acc, key) => {
-          const newKey = transformer(key);
-          acc[newKey] = transformData(obj[key], transformer);
-          return acc;
-        }, {} as any);
-    }
-    return obj;
-};
 
 interface DataContextType {
   // State
@@ -85,6 +91,7 @@ interface DataContextType {
   terms: Term[];
   dayEvents: DayEvent[];
   expenses: Expense[];
+  sessionObservations: SessionObservation[];
 
   // Actions
   setDrills: React.Dispatch<React.SetStateAction<Drill[]>>;
@@ -99,6 +106,7 @@ interface DataContextType {
   setTerms: React.Dispatch<React.SetStateAction<Term[]>>;
   setDayEvents: React.Dispatch<React.SetStateAction<DayEvent[]>>;
   setExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
+  setSessionObservations: React.Dispatch<React.SetStateAction<SessionObservation[]>>;
 
   // High-Level Actions
   addDrill: (drill: Drill) => void;
@@ -133,10 +141,13 @@ interface DataContextType {
 
   upsertExpense: (expense: Expense) => void;
   deleteExpense: (id: string) => void;
+  addSessionObservation: (observation: SessionObservation) => void;
+  deleteSessionObservation: (id: string) => void;
 
   uploadFile: (bucket: string, file: File) => Promise<string | null>;
   forceSync: (direction?: 'auto' | 'upload' | 'download') => Promise<void>;
   importData: (data: any) => void;
+  syncHealth: SyncHealthStatus;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -198,19 +209,49 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [expenses, setExpenses] = useState<Expense[]>(() => {
       return safeJsonParse<Expense[]>(localStorage.getItem('tactics-lab-expenses'), []);
   });
+  const [sessionObservations, setSessionObservations] = useState<SessionObservation[]>(() => {
+      const saved = safeJsonParse<SessionObservation[]>(localStorage.getItem('tactics-lab-session-observations'), []);
+      return (saved ?? []).map(normalizeSessionObservation);
+  });
+  const [syncHealth, setSyncHealth] = useState<SyncHealthStatus>(EMPTY_SYNC_HEALTH);
 
   const stateRef = useRef({
-      drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents, expenses
+      drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents, expenses, sessionObservations
   });
+  const syncHealthRef = useRef(syncHealth);
 
   useEffect(() => {
-      stateRef.current = { drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents, expenses };
-  }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents, expenses]);
+      stateRef.current = { drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents, expenses, sessionObservations };
+  }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms, dayEvents, expenses, sessionObservations]);
+
+  useEffect(() => {
+    if (sessionObservations.length > 0) return;
+    const migrated = players.flatMap((player) =>
+      (player.sessionObservations || []).map((observation) =>
+        normalizeSessionObservation({
+          ...observation,
+          playerId: (observation as any).playerId || player.id,
+        } as SessionObservation)
+      )
+    );
+    if (migrated.length > 0) {
+      setSessionObservations(migrated);
+    }
+  }, [players, sessionObservations.length]);
+  useEffect(() => {
+    syncHealthRef.current = syncHealth;
+  }, [syncHealth]);
 
   const hasSynced = useRef(false);
   const lastSyncTime = useRef(0);
 
   const isImporting = useRef(false);
+  const registerSchemaIssue = useCallback((error: any) => {
+    const issue = classifySchemaIssue(error);
+    if (!issue) return false;
+    setSyncHealth((prev) => mergeSchemaIssue(prev, issue));
+    return true;
+  }, []);
 
   const forceSync = useCallback(async (direction: 'auto' | 'upload' | 'download' = 'auto') => {
     if (!isSupabaseEnabled || isImporting.current) return;
@@ -225,6 +266,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const localState = stateRef.current;
 
     const uploadTable = async (tableName: string, localData: any[]) => {
+        if (syncHealthRef.current.missingTables.includes(tableName)) return;
         if (!localData || localData.length === 0) return;
         const uniqueData = Array.from(new Map(localData.map(item => [item.id, item])).values());
         
@@ -241,53 +283,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
 
         const sanitized = uniqueData.map(item => {
-            if (tableName === 'locations') {
-                return {
-                    id: item.id,
-                    name: item.name,
-                    color: item.sessionType || item.color,
-                    courts: item.courts || [],
-                    updated_at: item.updatedAt || Date.now(),
-                    created_at: item.createdAt || Date.now()
-                };
-            }
-
-            // ONLY transform top-level keys for DB columns. 
-            const transformed: any = {};
-            Object.keys(item).forEach(key => {
-                const dbKey = toSnakeCase(key);
-                transformed[dbKey] = item[key];
-            });
-
-            delete transformed.user_id;
-            
-            // Clean up derived or missing properties
-            if (tableName === 'training_sessions') {
-                delete transformed.date_obj;
-                delete transformed.start_hour;
-                delete transformed.participants;
-                delete transformed.start_key;
-            }
-            if (tableName === 'players') {
-                delete transformed.age;
-                
-                // STRICT DEFENSE: If client_id is not in our server-verified set, KILL IT.
-                // This prevents 409 errors even if the local state thinks it's valid.
-                if (transformed.client_id) {
-                   if (!validClientIds.has(transformed.client_id)) {
-                      // console.warn(`Sanitizing upload: Player ${transformed.name} has un-synced parent ${transformed.client_id}. Unlinking.`);
-                      transformed.client_id = null;
-                   }
-                }
-            }
-            return transformed;
+            return sanitizeRecordForTable(tableName, item, { validClientIds });
         });
         // Process uploads sequentially to isolate failures and provide better error handling
         for (const item of sanitized) {
             const { error: uploadError } = await supabase.from(tableName).upsert(item, { onConflict: 'id' });
             if (uploadError) {
-                console.warn(`Upload failed for item ${item.id} in ${tableName}:`, uploadError.message);
-                // If 409 (FK violation) happens on a player, retry without the client_id as a fallback
+                const isSchemaIssue = registerSchemaIssue(uploadError);
+                if (!isSchemaIssue) {
+                  console.warn(`Upload failed for item ${item.id} in ${tableName}:`, uploadError.message);
+                }
+                // If FK violation happens on a player, retry without the client_id as a fallback
                 if (tableName === 'players' && uploadError.code === '23503') {
                     console.warn(`Retry upload for player ${item.id} without client link.`);
                     const fallbackItem = { ...item, client_id: null };
@@ -298,6 +304,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
 
     const syncTable = async (tableName: string, localData: any[], setter: React.Dispatch<React.SetStateAction<any[]>>) => {
+        if (syncHealthRef.current.missingTables.includes(tableName)) return;
         try {
             if (direction === 'upload') {
                 await uploadTable(tableName, localData);
@@ -306,7 +313,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
             const { data: remoteData, error } = await supabase.from(tableName).select('*');
             if (error) {
-                if (error.code !== 'PGRST116') console.warn(`Sync error (${tableName}):`, error.message);
+                const isSchemaIssue = registerSchemaIssue(error);
+                if (!isSchemaIssue && error.code !== 'PGRST116') {
+                  console.warn(`Sync error (${tableName}):`, error.message);
+                }
                 return;
             }
 
@@ -374,7 +384,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             syncTable('terms', localState.terms, setTerms),
             syncTable('day_events', localState.dayEvents, setDayEvents),
             syncTable('session_logs', localState.logs, setLogs),
-            syncTable('expenses', localState.expenses, setExpenses)
+            syncTable('expenses', localState.expenses, setExpenses),
+            syncTable('session_observations', localState.sessionObservations, setSessionObservations)
         ]);
     } catch (err: any) {}
   }, []);
@@ -400,9 +411,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { localStorage.setItem('tactics-lab-terms', JSON.stringify(terms)); }, [terms]);
   useEffect(() => { localStorage.setItem('tactics-lab-day-events', JSON.stringify(dayEvents)); }, [dayEvents]);
   useEffect(() => { localStorage.setItem('tactics-lab-expenses', JSON.stringify(expenses)); }, [expenses]);
+  useEffect(() => { localStorage.setItem('tactics-lab-session-observations', JSON.stringify(sessionObservations)); }, [sessionObservations]);
 
   const syncToSupabase = async (table: string, data: any, action: 'upsert' | 'delete') => {
     if (!isSupabaseEnabled || isImporting.current) return;
+    if (syncHealthRef.current.missingTables.includes(table)) return;
     
     // Check for active session before syncing
     const { data: { session } } = await supabase.auth.getSession();
@@ -410,30 +423,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     try {
       if (action === 'delete') {
-        await supabase.from(table).delete().eq('id', data.id);
+        const { error } = await supabase.from(table).delete().eq('id', data.id);
+        if (error) {
+          const isSchemaIssue = registerSchemaIssue(error);
+          if (!isSchemaIssue && error.code !== 'PGRST116') {
+            console.warn(`Incremental delete failed (${table}):`, error.message);
+          }
+        }
       } else {
-        let payload = transformData(data, toSnakeCase);
-        if (payload.user_id) delete payload.user_id;
-        if (table === 'locations') {
-           payload = { 
-               id: data.id, 
-               name: data.name, 
-               color: data.sessionType || data.color, 
-               courts: data.courts || [],
-               updated_at: data.updatedAt || Date.now(),
-               created_at: data.createdAt || Date.now()
-           };
-        }
-        if (table === 'training_sessions') {
-           delete payload.date_obj;
-           delete payload.start_hour;
-           delete payload.participants;
-        }
+        let payload = sanitizeRecordForTable(table, data);
         if (table === 'players') {
-           delete payload.age;
+          const validClientIds = new Set(stateRef.current.clients.map((client) => client.id));
+          payload = sanitizeRecordForTable(table, data, { validClientIds });
         }
         const { error } = await supabase.from(table).upsert(payload);
-        if (error && error.code !== 'PGRST116') console.warn(`Incremental sync failed (${table}):`, error.message);
+        if (error) {
+          const isSchemaIssue = registerSchemaIssue(error);
+          if (!isSchemaIssue && error.code !== 'PGRST116') {
+            console.warn(`Incremental sync failed (${table}):`, error.message);
+          }
+        }
       }
     } catch (err) {
       // Squelch
@@ -635,6 +644,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
      syncToSupabase('expenses', { id }, 'delete');
   }, []);
 
+  const addSessionObservation = useCallback((observation: SessionObservation) => {
+     const now = Date.now();
+     const normalized = normalizeSessionObservation({
+       ...observation,
+       createdAt: (observation as any).createdAt ?? now,
+       updatedAt: now,
+     } as SessionObservation);
+     setSessionObservations(prev => [normalized, ...prev]);
+     syncToSupabase('session_observations', normalized, 'upsert');
+  }, []);
+
+  const deleteSessionObservation = useCallback((id: string) => {
+     setSessionObservations(prev => prev.filter(o => o.id !== id));
+     syncToSupabase('session_observations', { id }, 'delete');
+  }, []);
+
   const uploadFile = useCallback(async (bucket: string, file: File): Promise<string | null> => {
     if (!isSupabaseEnabled) {
        return new Promise((resolve) => {
@@ -672,6 +697,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const rawEvents = data.dayEvents || data.day_events || [];
     const rawLogs = data.logs || data.sessionLogs || data.session_logs || [];
     const rawExpenses = data.expenses || [];
+    const rawSessionObservations = data.sessionObservations || data.session_observations || [];
 
     // Prepare fresh datasets
     const nextDrills = (data.drills || []).map((d: any) => ({ ...normalizeDrill(d), updatedAt: stamp }));
@@ -686,6 +712,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const nextTerms = (data.terms || []).map((t: any) => ({ ...t, updatedAt: stamp }));
     const nextDayEvents = rawEvents.map((e: any) => ({ ...e, updatedAt: stamp }));
     const nextExpenses = rawExpenses.map((e: any) => ({ ...e, updatedAt: stamp }));
+    const nextSessionObservations = rawSessionObservations.map((o: any) =>
+      normalizeSessionObservation({ ...o, updatedAt: stamp } as SessionObservation)
+    );
 
     // SANITIZATION: Remove dangling client references from players
     const clientIds = new Set(nextClients.map((c: any) => c.id));
@@ -709,6 +738,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setTerms(nextTerms);
     setDayEvents(nextDayEvents);
     setExpenses(nextExpenses);
+    setSessionObservations(nextSessionObservations);
 
     // Update Cache
     stateRef.current = {
@@ -723,7 +753,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         logs: nextLogs,
         terms: nextTerms,
         dayEvents: nextDayEvents,
-        expenses: nextExpenses
+        expenses: nextExpenses,
+        sessionObservations: nextSessionObservations
     };
 
     // Force an immediate upload
@@ -738,10 +769,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       drills, setDrills, templates, setTemplates, sequences, setSequences, plans, setPlans,
       players, setPlayers, clients, setClients, sessions, setSessions, locations, setLocations,
       logs, setLogs, terms, setTerms, dayEvents, setDayEvents, expenses, setExpenses,
+      sessionObservations, setSessionObservations,
       addDrill, updateDrill, deleteDrill, addTemplate, updateTemplate, deleteTemplate,
       addSequence, updateSequence, deleteSequence, addPlan, updatePlan, deletePlan,
       addPlayer, updatePlayer, deletePlayer, upsertClient, deleteClient, mergeClients, upsertSession, deleteSession, upsertLog,
-      upsertDayEvent, deleteDayEvent, upsertExpense, deleteExpense, uploadFile, forceSync, importData
+      upsertDayEvent, deleteDayEvent, upsertExpense, deleteExpense, addSessionObservation, deleteSessionObservation,
+      uploadFile, forceSync, importData, syncHealth
     }}>
       {children}
     </DataContext.Provider>

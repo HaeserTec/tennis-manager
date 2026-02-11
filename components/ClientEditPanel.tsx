@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import type { Client, Player, Payment, TrainingSession } from '@/lib/playbook';
+import type { Client, Player, Payment, TrainingSession, DayEvent } from '@/lib/playbook';
 import { ClientStatementDocument } from './ClientStatementDocument';
 
 interface ClientEditPanelProps {
@@ -12,6 +12,7 @@ interface ClientEditPanelProps {
   players: Player[];
   allClients: Client[];
   sessions: TrainingSession[];
+  dayEvents?: DayEvent[];
   isOpen: boolean;
   onClose: () => void;
   onSave: (client: Client) => void;
@@ -54,6 +55,7 @@ export function ClientEditPanel({
   players,
   allClients,
   sessions,
+  dayEvents = [],
   isOpen,
   onClose,
   onSave,
@@ -172,6 +174,7 @@ export function ClientEditPanel({
            client={{ ...client, payments }} 
            players={players} 
            sessions={sessions} 
+           dayEvents={dayEvents}
            onClose={() => setShowStatement(false)} 
         />
      );

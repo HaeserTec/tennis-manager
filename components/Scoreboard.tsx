@@ -126,24 +126,24 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
   const activeLog = todaysLogs.find(l => l.playerId === selectedPlayerId);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-background relative overflow-hidden">
+    <div className="app-page flex-1 flex flex-col h-full relative overflow-hidden">
       
       {/* Header */}
-      <div className="shrink-0 p-4 border-b border-border bg-card/50 backdrop-blur-sm z-10 flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-           <div className="flex items-center gap-3">
+      <div className="app-topbar shrink-0 p-3 sm:p-4 z-10 flex flex-col gap-3 sm:gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+           <div className="flex items-center gap-2.5 sm:gap-3">
               <Button variant="ghost" size="icon" onClick={onNavigateHome}>
                  <ChevronLeft className="w-5 h-5" />
               </Button>
               <div>
-                 <h1 className="text-xl font-black uppercase tracking-tighter text-foreground">The Scoreboard</h1>
-                 <p className="text-[10px] text-muted-foreground font-bold tracking-widest uppercase">Performance Tracking</p>
+                 <h1 className="app-heading-lg app-title uppercase text-foreground">The Scoreboard</h1>
+                 <p className="app-kicker">Performance Tracking</p>
               </div>
            </div>
            
-           <div className="flex bg-secondary/50 rounded-lg p-1 shrink-0">
-              <button onClick={() => setViewMode('daily')} className={cn("px-3 py-1 text-xs font-bold rounded-md transition-all", viewMode === 'daily' && "bg-background shadow text-primary")}>Daily Log</button>
-              <button onClick={() => setViewMode('leaderboard')} className={cn("px-3 py-1 text-xs font-bold rounded-md transition-all", viewMode === 'leaderboard' && "bg-background shadow text-primary")}>Leaderboard</button>
+           <div className="grid grid-cols-2 bg-secondary/50 rounded-lg p-1 shrink-0 w-full sm:w-auto">
+              <button onClick={() => setViewMode('daily')} className={cn("tap-target px-3 py-1.5 text-xs font-bold rounded-md transition-all", viewMode === 'daily' && "bg-background shadow text-primary")}>Daily Log</button>
+              <button onClick={() => setViewMode('leaderboard')} className={cn("tap-target px-3 py-1.5 text-xs font-bold rounded-md transition-all", viewMode === 'leaderboard' && "bg-background shadow text-primary")}>Leaderboard</button>
            </div>
         </div>
 
@@ -151,11 +151,11 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
            <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                  <div className="flex items-center gap-2 bg-secondary/50 rounded-lg p-1">
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDateChange(-1)}><ChevronLeft className="w-3 h-3" /></Button>
+                    <Button variant="ghost" size="icon" className="tap-target-icon h-9 w-9 sm:h-8 sm:w-8" onClick={() => handleDateChange(-1)}><ChevronLeft className="w-3 h-3" /></Button>
                     <div className="text-xs font-mono font-bold w-20 text-center">
                        {selectedDate === new Date().toLocaleDateString('en-CA') ? "TODAY" : selectedDate}
                     </div>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDateChange(1)}><ChevronRight className="w-3 h-3" /></Button>
+                    <Button variant="ghost" size="icon" className="tap-target-icon h-9 w-9 sm:h-8 sm:w-8" onClick={() => handleDateChange(1)}><ChevronRight className="w-3 h-3" /></Button>
                  </div>
                  <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                     <span className={cn(progress.logged === progress.total ? "text-emerald-400" : "text-foreground")}>
@@ -178,22 +178,22 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
          
          {/* VIEW: LEADERBOARD */}
          {viewMode === 'leaderboard' && (
-            <div className="absolute inset-0 overflow-auto p-4 md:p-8">
+            <div className="absolute inset-0 overflow-auto p-3 sm:p-4 md:p-8">
                <div className="max-w-5xl mx-auto">
-                  <div className="glass-card rounded-[2rem] overflow-hidden shadow-2xl">
+                  <div className="app-card rounded-[2rem] overflow-hidden">
                      {/* Table Header */}
-                     <div className="grid grid-cols-[3rem_2fr_5rem_1fr] md:grid-cols-[4rem_2fr_repeat(5,1fr)] bg-white/5 border-b border-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground sticky top-0 backdrop-blur-xl z-10">
-                        <div className="p-5 text-center">#</div>
-                        <div className="p-5 cursor-pointer hover:text-foreground flex items-center gap-2 transition-colors" onClick={() => handleSort('name')}>
+                     <div className="app-table-head grid grid-cols-[3rem_2fr_5rem_1fr] md:grid-cols-[4rem_2fr_repeat(5,1fr)] sticky top-0 backdrop-blur-xl z-10">
+                        <div className="px-3 sm:px-5 py-3 sm:py-4 text-center">#</div>
+                        <div className="px-3 sm:px-5 py-3 sm:py-4 cursor-pointer hover:text-foreground flex items-center gap-2 transition-colors" onClick={() => handleSort('name')}>
                            Player <ArrowUpDown className="w-3 h-3" />
                         </div>
-                        <div className="p-5 text-center cursor-pointer hover:text-foreground hidden md:block transition-colors" onClick={() => handleSort('backToBase')}>Base Speed</div>
-                        <div className="p-5 text-center cursor-pointer hover:text-foreground hidden md:block transition-colors" onClick={() => handleSort('longestRally')}>Rally</div>
-                        <div className="p-5 text-center cursor-pointer hover:text-foreground hidden md:block transition-colors" onClick={() => handleSort('firstServe')}>Serve %</div>
-                        <div className="p-5 text-center flex items-center justify-center gap-2" title="Last 5 sessions trend">
+                        <div className="px-3 sm:px-5 py-3 sm:py-4 text-center cursor-pointer hover:text-foreground hidden md:block transition-colors" onClick={() => handleSort('backToBase')}>Base Speed</div>
+                        <div className="px-3 sm:px-5 py-3 sm:py-4 text-center cursor-pointer hover:text-foreground hidden md:block transition-colors" onClick={() => handleSort('longestRally')}>Rally</div>
+                        <div className="px-3 sm:px-5 py-3 sm:py-4 text-center cursor-pointer hover:text-foreground hidden md:block transition-colors" onClick={() => handleSort('firstServe')}>Serve %</div>
+                        <div className="px-3 sm:px-5 py-3 sm:py-4 text-center flex items-center justify-center gap-2" title="Last 5 sessions trend">
                            <TrendingUp className="w-3 h-3 text-fuchsia-400" /> Trend
                         </div>
-                        <div className="p-5 text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-2 transition-colors" onClick={() => handleSort('streak')} title="Consecutive weeks with a past scheduled session">
+                        <div className="px-3 sm:px-5 py-3 sm:py-4 text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-2 transition-colors" onClick={() => handleSort('streak')} title="Consecutive weeks with a past scheduled session">
                            <Flame className="w-3 h-3 text-orange-500 glow-primary" /> Streak
                         </div>
                      </div>
@@ -201,14 +201,14 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                      {/* Table Body */}
                      <div className="divide-y divide-white/5">
                         {leaderboardData.map((player, idx) => (
-                           <div key={player.id} className="grid grid-cols-[3rem_2fr_5rem_1fr] md:grid-cols-[4rem_2fr_repeat(5,1fr)] hover:bg-white/5 transition-colors group items-center">
-                              <div className="p-5 text-center font-black text-muted-foreground flex justify-center">
+                           <div key={player.id} className="app-table-row grid grid-cols-[3rem_2fr_5rem_1fr] md:grid-cols-[4rem_2fr_repeat(5,1fr)] group items-center">
+                              <div className="p-3 sm:p-5 text-center font-black text-muted-foreground flex justify-center">
                                  {idx === 0 ? <Medal className="w-6 h-6 text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]" /> :
                                   idx === 1 ? <Medal className="w-6 h-6 text-slate-300 drop-shadow-[0_0_8px_rgba(203,213,225,0.5)]" /> :
                                   idx === 2 ? <Medal className="w-6 h-6 text-amber-600 drop-shadow-[0_0_8px_rgba(180,83,9,0.5)]" /> :
                                   <span className="text-sm opacity-40">{idx + 1}</span>}
                               </div>
-                              <div className="p-5 flex items-center gap-4">
+                              <div className="p-3 sm:p-5 flex items-center gap-3 sm:gap-4">
                                  <div className="h-10 w-10 rounded-xl flex items-center justify-center font-black text-xs glass border border-white/5 shrink-0 group-hover:scale-110 transition-transform" style={{ color: player.avatarColor, backgroundColor: `${player.avatarColor}15` }}>
                                     {player.name.substring(0,2).toUpperCase()}
                                  </div>
@@ -216,18 +216,18 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                               </div>
 
                               {/* Stats Columns */}
-                              <div className="p-5 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground/80">
+                              <div className="p-3 sm:p-5 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground/80">
                                  {player.backToBase > 0 ? `${player.backToBase}s` : '—'}
                               </div>
-                              <div className="p-5 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground/80">
+                              <div className="p-3 sm:p-5 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground/80">
                                  {player.longestRally > 0 ? player.longestRally : '—'}
                               </div>
-                              <div className="p-5 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground/80">
+                              <div className="p-3 sm:p-5 text-center font-mono font-bold text-sm hidden md:block text-muted-foreground/80">
                                  {player.firstServe > 0 ? `${player.firstServe}%` : '—'}
                               </div>
 
                               {/* Trend Sparkline */}
-                              <div className="p-5 flex justify-center items-center">
+                              <div className="p-3 sm:p-5 flex justify-center items-center">
                                  {player.trendData.length >= 2 ? (
                                     <div className="p-1 rounded bg-fuchsia-500/5 border border-fuchsia-500/10">
                                        <Sparkline data={player.trendData} width={60} height={20} color="#d946ef" />
@@ -237,7 +237,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                                  )}
                               </div>
 
-                              <div className="p-5 text-center font-black text-orange-500 flex justify-center items-center gap-1.5 drop-shadow-[0_0_8px_rgba(249,115,22,0.3)]">
+                              <div className="p-3 sm:p-5 text-center font-black text-orange-500 flex justify-center items-center gap-1.5 drop-shadow-[0_0_8px_rgba(249,115,22,0.3)]">
                                  {player.streak} <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest opacity-60">Wks</span>
                               </div>
                            </div>
@@ -253,7 +253,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
             <div className="flex-1 flex h-full">
                {/* Left Column: The Queue */}
                <div className={cn(
-                  "flex-1 overflow-y-auto p-4 space-y-2 lg:border-r border-border transition-all",
+                  "flex-1 overflow-y-auto p-3 sm:p-4 space-y-2 lg:border-r border-border transition-all",
                   "lg:max-w-md xl:max-w-lg" // Desktop width constraint
                )}>
                   {queue.map(player => {
@@ -294,7 +294,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
                            <Button 
                               size="sm" 
                               variant={isLogged ? "secondary" : "default"}
-                              className={cn("h-8 text-xs font-bold min-w-[90px]", isLogged && "text-muted-foreground hover:text-foreground")}
+                              className={cn("tap-target h-9 text-xs font-bold min-w-[96px]", isLogged && "text-muted-foreground hover:text-foreground")}
                            >
                               {isLogged ? "Edit" : "Quick Rate"}
                            </Button>
@@ -336,14 +336,15 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
 
       {/* Mobile Drawer (Only for Daily View) */}
       {isMobileDrawerOpen && activePlayer && viewMode === 'daily' && (
-                     <div className="lg:hidden absolute inset-0 z-50 bg-background/95 backdrop-blur-md flex flex-col">             <LogForm
+         <div className="lg:hidden absolute inset-0 z-50 bg-background/95 backdrop-blur-md flex flex-col">
+            <LogForm
                player={activePlayer}
                existingLog={activeLog}
                date={selectedDate}
                allLogs={logs}
                onSave={(log) => { onUpsertLog(log); setIsMobileDrawerOpen(false); }}
                onCancel={() => setIsMobileDrawerOpen(false)}
-             />
+            />
          </div>
       )}
     </div>
@@ -556,9 +557,9 @@ function LogForm({ player, existingLog, date, allLogs, onSave, onCancel, embedde
          </div>
 
          {/* Footer Actions */}
-         <div className="p-4 border-t border-border bg-card/50 flex gap-3">
-            <Button variant="secondary" className="flex-1 h-12 text-sm font-bold" onClick={onCancel}>Cancel</Button>
-            <Button className="flex-[2] h-12 text-sm font-black tracking-wide bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20" onClick={handleSave}>
+         <div className="p-3 sm:p-4 border-t border-border bg-card/50 flex gap-2 sm:gap-3">
+            <Button variant="secondary" className="tap-target flex-1 h-11 sm:h-12 text-sm font-bold" onClick={onCancel}>Cancel</Button>
+            <Button className="tap-target flex-[2] h-11 sm:h-12 text-sm font-black tracking-wide bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20" onClick={handleSave}>
                {existingLog ? "Update Log" : "Save Log"}
             </Button>
          </div>
@@ -606,11 +607,11 @@ function CounterControl({ label, subtitle, icon, value, onChange }: { label: str
             </div>
          </div>
          <div className="flex items-center justify-between bg-background rounded-lg border border-border p-1">
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-md hover:bg-secondary" onClick={() => onChange(value - 1)}>
+            <Button variant="ghost" size="icon" className="tap-target-icon h-9 w-9 sm:h-8 sm:w-8 rounded-md hover:bg-secondary" onClick={() => onChange(value - 1)}>
                <Minus className="w-4 h-4" />
             </Button>
             <div className="flex-1 text-center font-mono text-xl font-black">{value}</div>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-md hover:bg-secondary" onClick={() => onChange(value + 1)}>
+            <Button variant="ghost" size="icon" className="tap-target-icon h-9 w-9 sm:h-8 sm:w-8 rounded-md hover:bg-secondary" onClick={() => onChange(value + 1)}>
                <Plus className="w-4 h-4" />
             </Button>
          </div>

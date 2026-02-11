@@ -1,15 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
-import type { Client, Player, TrainingSession, Payment } from '@/lib/playbook';
+import type { Client, Player, TrainingSession, Payment, DayEvent } from '@/lib/playbook';
+import { getSessionBillingForClient } from '@/lib/billing';
 
 interface ClientStatementDocumentProps {
   client: Client;
   players: Player[];
   sessions: TrainingSession[];
+  dayEvents?: DayEvent[];
   onClose?: () => void;
 }
 
-export function ClientStatementDocument({ client, players, sessions, onClose }: ClientStatementDocumentProps) {
+export function ClientStatementDocument({ client, players, sessions, dayEvents = [], onClose }: ClientStatementDocumentProps) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   
   const clientKids = useMemo(() => players.filter(p => p.clientId === client.id), [players, client.id]);
@@ -24,7 +26,7 @@ export function ClientStatementDocument({ client, players, sessions, onClose }: 
     );
 
     // 3. Create ALL Transaction Items first
-    const allTransactions: { date: string; desc: string; debit: number; credit: number; timestamp: number; type: 'fee' | 'payment' | 'balance' }[] = [];
+    const allTransactions: { date: string; desc: string; debit: number; credit: number; timestamp: number; type: 'fee' | 'payment' | 'balance' | 'credit' }[] = [];
 
     // Add Payments
     if (client.payments) {
@@ -42,7 +44,10 @@ export function ClientStatementDocument({ client, players, sessions, onClose }: 
 
     // Add Session Fees
     clientSessions.forEach(s => {
-      // For each player of this client in this session
+      const billing = getSessionBillingForClient(s, playerIds, dayEvents);
+      if (billing.status === 'rain') return;
+
+      // For each player of this client in this session (description detail)
       const involvedPlayers = s.participantIds.filter(pid => playerIds.has(pid));
       involvedPlayers.forEach(pid => {
         const p = players.find(x => x.id === pid);
@@ -64,14 +69,25 @@ export function ClientStatementDocument({ client, players, sessions, onClose }: 
         const timeRange = `${s.startTime} - ${s.endTime}`;
         const withOthers = others.length > 0 ? ` (with ${others.join(', ')})` : '';
         
-        allTransactions.push({
-          date: s.date,
-          desc: `${typeLabel} (${timeRange}) - ${p?.name || 'Player'}${withOthers}`,
-          debit: s.price || 0, 
-          credit: 0,
-          timestamp: new Date(`${s.date}T${s.startTime}`).getTime(),
-          type: 'fee'
-        });
+        if (billing.status === 'cancelled') {
+          allTransactions.push({
+            date: s.date,
+            desc: `Credit - Coach Cancelled (${timeRange}) - ${p?.name || 'Player'}${withOthers}`,
+            debit: 0,
+            credit: s.price || 0,
+            timestamp: new Date(`${s.date}T${s.startTime}`).getTime(),
+            type: 'credit'
+          });
+        } else {
+          allTransactions.push({
+            date: s.date,
+            desc: `${typeLabel} (${timeRange}) - ${p?.name || 'Player'}${withOthers}`,
+            debit: s.price || 0, 
+            credit: 0,
+            timestamp: new Date(`${s.date}T${s.startTime}`).getTime(),
+            type: 'fee'
+          });
+        }
       });
     });
 
@@ -212,16 +228,16 @@ export function ClientStatementDocument({ client, players, sessions, onClose }: 
                  <th className="py-1.5 text-left w-20 font-bold uppercase text-[10px] tracking-wider">Date</th>
                  <th className="py-1.5 text-left font-bold uppercase text-[10px] tracking-wider">Description</th>
                  <th className="py-1.5 text-right w-20 font-bold uppercase text-[10px] tracking-wider">Fee</th>
-                 <th className="py-1.5 text-right w-20 font-bold uppercase text-[10px] tracking-wider">Paid</th>
+                 <th className="py-1.5 text-right w-20 font-bold uppercase text-[10px] tracking-wider">Credit</th>
                  <th className="py-1.5 text-right w-24 font-bold uppercase text-[10px] tracking-wider">Balance</th>
               </tr>
            </thead>
            <tbody className="text-[11px]">
               {statementData.rows.map((row, i) => (
-                 <tr key={i} className={cn("border-b border-gray-100", row.type === 'payment' && "bg-green-50/50 print:bg-transparent", row.type === 'balance' && "bg-gray-50 font-bold print:bg-transparent")}>
+                 <tr key={i} className={cn("border-b border-gray-100", row.type === 'payment' && "bg-green-50/50 print:bg-transparent", row.type === 'credit' && "bg-blue-50/50 print:bg-transparent", row.type === 'balance' && "bg-gray-50 font-bold print:bg-transparent")}>
                     <td className="py-1.5 text-gray-600 font-mono">{row.date}</td>
                     <td className="py-1.5">
-                       <span className={cn("font-medium", row.type === 'payment' ? "text-green-700 font-bold" : "text-gray-900")}>
+                       <span className={cn("font-medium", row.type === 'payment' ? "text-green-700 font-bold" : row.type === 'credit' ? "text-blue-700 font-bold" : "text-gray-900")}>
                           {row.desc}
                        </span>
                     </td>

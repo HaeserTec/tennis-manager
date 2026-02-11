@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn, nanoid } from '@/lib/utils';
-import type { Player, PlayerStats, Drill, Client, TrainingSession } from '@/lib/playbook';
+import type { Player, PlayerStats, Drill, Client, TrainingSession, DayEvent, SessionObservation } from '@/lib/playbook';
 import { RadarChart } from '@/components/RadarChart';
 import { AcademyCourtView } from '@/components/AcademyCourtView';
 import { PlayerDossier } from '@/components/locker/PlayerDossier';
@@ -14,6 +14,8 @@ interface LockerRoomProps {
   drills: Drill[];
   clients?: Client[];
   sessions?: TrainingSession[];
+  dayEvents?: DayEvent[];
+  sessionObservations?: SessionObservation[];
   onUpdatePlayer: (player: Player) => void;
   onAddPlayer: (player: Player) => void;
   onUpsertClient?: (client: Client) => void;
@@ -47,7 +49,7 @@ const AVATAR_COLORS = [
 
 const getRandomColor = () => AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 
-export function LockerRoom({ players, drills, clients = [], sessions = [], onUpdatePlayer, onAddPlayer, onUpsertClient, onDeletePlayer, onDeleteClient, onMergeClients, onAssignDrill, onUnassignDrill, initialSelectedPlayerId }: LockerRoomProps) {
+export function LockerRoom({ players, drills, clients = [], sessions = [], dayEvents = [], sessionObservations = [], onUpdatePlayer, onAddPlayer, onUpsertClient, onDeletePlayer, onDeleteClient, onMergeClients, onAssignDrill, onUnassignDrill, initialSelectedPlayerId }: LockerRoomProps) {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const listPanelRef = useRef<HTMLDivElement | null>(null);
@@ -149,6 +151,7 @@ export function LockerRoom({ players, drills, clients = [], sessions = [], onUpd
       assignedDrills: [],
       avatarColor: getRandomColor(),
       attendance: [],
+      schedule: [],
       pbs: {},
       dna: { confidence: 5 },
       intel: {
@@ -208,12 +211,12 @@ export function LockerRoom({ players, drills, clients = [], sessions = [], onUpd
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-full overflow-hidden bg-radial-gradient text-foreground relative">
+    <div className="app-page flex flex-col md:flex-row h-full overflow-hidden text-foreground relative">
       
       {/* ADD PLAYER MODAL */}
       {isAddModalOpen && (
          <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-6" onClick={e => e.stopPropagation()}>
+            <div className="app-card w-full max-w-md rounded-2xl p-6 space-y-6" onClick={e => e.stopPropagation()}>
                <div className="space-y-1">
                   <h3 className="text-xl font-black tracking-tight">New Recruit</h3>
                   <p className="text-sm text-muted-foreground">Add a player and link their guardian account.</p>
@@ -268,7 +271,7 @@ export function LockerRoom({ players, drills, clients = [], sessions = [], onUpd
         ref={listPanelRef}
         style={{ '--locker-sidebar-width': `${listPanelWidth}px` } as React.CSSProperties}
         className={cn(
-          "w-full border-r border-border bg-card/30 flex flex-col relative md:w-[var(--locker-sidebar-width)]",
+          "app-panel-muted app-divider w-full border-r flex flex-col relative md:w-[var(--locker-sidebar-width)]",
           isResizingListPanel ? "transition-none" : "transition-all",
           selectedPlayerId ? "hidden md:flex" : "flex"
         )}
@@ -315,7 +318,7 @@ export function LockerRoom({ players, drills, clients = [], sessions = [], onUpd
                   ? "bg-primary/10 border-primary/50"
                   : selectedPlayerId === player.id 
                      ? "bg-secondary border-primary/50 ring-1 ring-primary/20 shadow-lg glow-primary" 
-                     : "bg-card/40 border-transparent hover:bg-secondary/50"
+                     : "app-card border-transparent hover:bg-secondary/50 app-card-hover"
               )}
             >
               {isSelectionMode && (
@@ -374,6 +377,8 @@ export function LockerRoom({ players, drills, clients = [], sessions = [], onUpd
               drills={drills}
               clients={clients}
               sessions={sessions}
+              dayEvents={dayEvents}
+              sessionObservations={sessionObservations}
               onUpdate={onUpdatePlayer}
               onUpsertClient={onUpsertClient}
               onDelete={onDeletePlayer}

@@ -28,8 +28,8 @@ export function HomeDashboard({ stats, scoreboard, recents, onQuickAction, onSel
   const greeting = hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
 
   return (
-    <div className="flex-1 h-full overflow-y-auto bg-radial-gradient p-6 md:p-10 text-foreground no-scrollbar">
-      <div className="max-w-7xl mx-auto space-y-12 pb-20">
+    <div className="app-page flex-1 h-full overflow-y-auto p-4 sm:p-6 md:p-10 text-foreground no-scrollbar">
+      <div className="max-w-7xl mx-auto space-y-10 md:space-y-12 pb-16 md:pb-20">
         
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -39,22 +39,22 @@ export function HomeDashboard({ stats, scoreboard, recents, onQuickAction, onSel
                <img
                  src="/vgta-icon.svg"
                  alt="VGTA"
-                 className="relative h-20 w-20 rounded-2xl ring-1 ring-border/40 shadow-2xl"
+                 className="relative h-16 w-16 sm:h-20 sm:w-20 rounded-2xl ring-1 ring-border/40 shadow-2xl"
                />
             </div>
             <div className="space-y-1">
-              <h1 className="text-4xl md:text-6xl font-black tracking-tighter text-gradient uppercase">
+              <h1 className="app-heading-hero app-title text-gradient uppercase">
                 {greeting}
               </h1>
-              <p className="text-muted-foreground text-sm md:text-base font-bold tracking-[0.2em] uppercase opacity-70">
+              <p className="app-kicker">
                 Command Center
               </p>
             </div>
           </div>
           
           <div className="flex gap-3">
-             <div className="px-6 py-3 rounded-2xl glass border border-white/5 shadow-2xl">
-                <div className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mb-1">Local Time</div>
+             <div className="app-card px-4 sm:px-6 py-2.5 sm:py-3 rounded-2xl app-card-hover">
+                <div className="app-kicker text-primary mb-1">Local Time</div>
                 <div className="text-sm font-mono font-bold text-foreground">
                    {new Date().toLocaleDateString([], { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()} • {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
@@ -63,7 +63,7 @@ export function HomeDashboard({ stats, scoreboard, recents, onQuickAction, onSel
         </div>
 
         {/* 5-Card Command Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 sm:gap-6">
            <ActionCard 
               title="The Scoreboard" 
               description={`Today: ${scoreboard.logged}/${scoreboard.total}`}
@@ -115,19 +115,19 @@ export function HomeDashboard({ stats, scoreboard, recents, onQuickAction, onSel
         <div className="space-y-6">
            <div className="flex items-center gap-3">
               <div className="h-1.5 w-1.5 rounded-full bg-primary glow-primary" />
-              <h2 className="text-xs font-black uppercase tracking-[0.3em] text-muted-foreground">Jump Back In</h2>
+              <h2 className="app-kicker">Jump Back In</h2>
            </div>
            
            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Recent Players */}
               <div className="space-y-4">
-                 <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground opacity-50 px-1">Active Roster</h3>
+                 <h3 className="app-kicker opacity-70 px-1">Active Roster</h3>
                  <div className="space-y-2">
                     {recents.players.slice(0, 3).map(p => (
                        <button 
                           key={p.id} 
                           onClick={() => onSelectRecent('player', p.id)}
-                          className="w-full flex items-center gap-4 p-4 rounded-2xl glass-card hover:bg-white/5 transition-all group"
+                          className="app-card app-card-hover w-full flex items-center gap-4 p-4 rounded-2xl group"
                        >
                           <div className="h-10 w-10 rounded-xl bg-secondary flex items-center justify-center text-xs font-bold text-muted-foreground group-hover:text-foreground group-hover:scale-110 transition-all border border-white/5" style={{ backgroundColor: p.avatarColor }}>
                              {p.name.substring(0, 2)}
@@ -144,13 +144,13 @@ export function HomeDashboard({ stats, scoreboard, recents, onQuickAction, onSel
 
               {/* Recent Drills */}
               <div className="space-y-4">
-                 <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground opacity-50 px-1">Recent Drills</h3>
+                 <h3 className="app-kicker opacity-70 px-1">Recent Drills</h3>
                  <div className="space-y-2">
                     {recents.drills.slice(0, 3).map(d => (
                        <button 
                           key={d.id} 
                           onClick={() => onSelectRecent('drill', d.id!)}
-                          className="w-full flex items-center gap-4 p-4 rounded-2xl glass-card hover:bg-white/5 transition-all group"
+                          className="app-card app-card-hover w-full flex items-center gap-4 p-4 rounded-2xl group"
                        >
                           <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-all border border-primary/10">
                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
@@ -167,13 +167,13 @@ export function HomeDashboard({ stats, scoreboard, recents, onQuickAction, onSel
 
               {/* Recent Plans */}
               <div className="space-y-4">
-                 <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground opacity-50 px-1">Session Plans</h3>
+                 <h3 className="app-kicker opacity-70 px-1">Session Plans</h3>
                  <div className="space-y-2">
                     {recents.plans.slice(0, 3).map(p => (
                        <button 
                           key={p.id} 
                           onClick={() => onSelectRecent('plan', p.id)}
-                          className="w-full flex items-center gap-4 p-4 rounded-2xl glass-card hover:bg-white/5 transition-all group"
+                          className="app-card app-card-hover w-full flex items-center gap-4 p-4 rounded-2xl group"
                        >
                           <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-all border border-emerald-500/10">
                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -192,7 +192,7 @@ export function HomeDashboard({ stats, scoreboard, recents, onQuickAction, onSel
 
         {/* System Status Footer */}
         <div className="pt-8 border-t border-border/10">
-           <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full glass border border-emerald-500/10 text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400">
+           <div className="app-pill inline-flex items-center gap-2 px-3 sm:px-4 py-2 text-[10px] font-black uppercase tracking-[0.24em] sm:tracking-[0.3em] text-emerald-400">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
               Portal Online & Synced
            </div>
@@ -208,21 +208,21 @@ function ActionCard({ title, description, icon, color, bg, border, onClick }: an
       <button 
          onClick={onClick}
          className={cn(
-            "group relative flex flex-col items-start text-left p-8 rounded-[2rem] glass-card hover:bg-white/5 transition-all duration-500 hover:-translate-y-2 overflow-hidden",
+            "group relative flex flex-col items-start text-left p-5 sm:p-7 md:p-8 rounded-[1.5rem] sm:rounded-[2rem] app-card app-card-hover overflow-hidden",
             border
          )}
       >
          <div className={cn("absolute inset-0 opacity-10 transition-opacity duration-700", bg)} />
          
-         <div className={cn("relative p-4 rounded-2xl glass ring-1 ring-white/10 mb-6 transition-all duration-500 shadow-2xl group-hover:scale-110 group-hover:rotate-3", color)}>
+         <div className={cn("relative p-3 sm:p-4 rounded-2xl glass ring-1 ring-white/10 mb-4 sm:mb-6 transition-all duration-500 shadow-2xl group-hover:scale-110 group-hover:rotate-3", color)}>
             {icon}
          </div>
          
          <div className="relative space-y-2">
-            <h3 className="font-black text-xl text-foreground transition-colors uppercase italic tracking-tighter">
+            <h3 className="font-black text-lg sm:text-xl text-foreground transition-colors uppercase italic tracking-tighter">
                {title}
             </h3>
-            <p className="text-[10px] text-muted-foreground leading-relaxed font-black uppercase tracking-[0.2em] opacity-50 group-hover:opacity-100 transition-opacity">
+            <p className="text-[10px] text-muted-foreground leading-relaxed font-black uppercase tracking-[0.12em] sm:tracking-[0.2em] opacity-60 group-hover:opacity-100 transition-opacity">
                {description}
             </p>
          </div>

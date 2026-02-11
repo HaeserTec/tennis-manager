@@ -53,7 +53,7 @@ import {
     onOpenProfile
   }: NavigationRailProps & { onOpenProfile?: () => void }) {
     return (
-      <div className="hidden lg:flex flex-col items-center w-16 h-full glass border-r border-border py-4 z-40">
+      <div className="hidden lg:flex flex-col items-center w-16 h-full app-panel app-divider border-r py-4 z-40">
         {/* Home / Logo */}
         <button 
           onClick={onGoHome}

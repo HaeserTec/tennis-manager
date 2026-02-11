@@ -1,9 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn, nanoid } from '@/lib/utils';
-import type { Player, PlayerStats, Drill, Client, TrainingSession } from '@/lib/playbook';
+import type { Player, PlayerStats, Drill, Client, TrainingSession, DayEvent, SessionObservation } from '@/lib/playbook';
 import { RadarChart } from '@/components/RadarChart';
 import { ClientEditPanel } from '@/components/ClientEditPanel';
 import { 
@@ -19,6 +19,8 @@ interface PlayerDossierProps {
   drills: Drill[];
   clients: Client[];
   sessions: TrainingSession[];
+  dayEvents?: DayEvent[];
+  sessionObservations?: SessionObservation[];
   onUpdate: (player: Player) => void;
   onUpsertClient?: (client: Client) => void;
   onDeleteClient?: (clientId: string) => void;
@@ -34,12 +36,16 @@ const AVATAR_COLORS = [
   "#00faff", "#4d4dff", "#d946ef"
 ];
 
+const DAY_OPTIONS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+
 export function PlayerDossier({
   player,
   players,
   drills,
   clients,
   sessions,
+  dayEvents = [],
+  sessionObservations = [],
   onUpdate,
   onUpsertClient,
   onDeleteClient,
@@ -53,6 +59,11 @@ export function PlayerDossier({
   const [showColors, setShowColors] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [newNote, setNewNote] = useState('');
+  const [newScheduleDay, setNewScheduleDay] = useState<string>('Monday');
+  const [newScheduleStartTime, setNewScheduleStartTime] = useState<string>('16:00');
+  const [newScheduleEndTime, setNewScheduleEndTime] = useState<string>('17:00');
+  const [newScheduleType, setNewScheduleType] = useState<'Private' | 'Semi' | 'Group'>('Private');
+  const [newScheduleLocation, setNewScheduleLocation] = useState<string>('');
 
   const linkedClient = clients?.find((c: Client) => c.id === player.clientId);
   const assignedDrillsData = drills.filter((d: Drill) => player.assignedDrills.includes(d.id));
@@ -60,17 +71,112 @@ export function PlayerDossier({
   // Calculate age from DOB
   const age = player.dob ? Math.floor((Date.now() - new Date(player.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null;
 
-  // Attendance stats
+  const schedule = player.schedule || [];
   const attendance = player.attendance || [];
-  const last30Days = Array.from({ length: 28 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (27 - i));
-    return d;
-  });
-  
-  const attendedCount = last30Days.filter(d => 
-    attendance.some((ts: number) => new Date(ts).toDateString() === d.toDateString())
-  ).length;
+  const attendanceByDate = useMemo(() => {
+    const counts = new Map<string, number>();
+    attendance.forEach((ts) => {
+      const key = new Date(ts).toISOString().split('T')[0];
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return counts;
+  }, [attendance]);
+
+  const pastScheduledOccurrences = useMemo(() => {
+    if (!schedule.length) return [] as Array<{
+      id: string;
+      dateKey: string;
+      day: string;
+      startTime: string;
+      endTime: string;
+      sessionType: 'Private' | 'Semi' | 'Group';
+      location: string;
+    }>;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(today);
+    start.setDate(start.getDate() - 56); // Last 8 weeks
+
+    const all: Array<{
+      id: string;
+      dateKey: string;
+      day: string;
+      startTime: string;
+      endTime: string;
+      sessionType: 'Private' | 'Semi' | 'Group';
+      location: string;
+    }> = [];
+
+    for (let cursor = new Date(start); cursor < today; cursor.setDate(cursor.getDate() + 1)) {
+      const day = DAY_OPTIONS[cursor.getDay()];
+      const dateKey = cursor.toISOString().split('T')[0];
+      const matches = schedule.filter((slot) => slot.day === day);
+      matches.forEach((slot) => {
+        const slotId = slot.id || `${slot.day}-${slot.startTime}-${slot.endTime}-${slot.location}`;
+        all.push({
+          id: `${slotId}-${dateKey}`,
+          dateKey,
+          day,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          sessionType: slot.sessionType,
+          location: slot.location,
+        });
+      });
+    }
+
+    all.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+    return all;
+  }, [schedule]);
+
+  const scheduledAttendanceRows = useMemo(() => {
+    const consumedByDate = new Map<string, number>();
+    return pastScheduledOccurrences.map((occurrence) => {
+      const attendedSlots = attendanceByDate.get(occurrence.dateKey) || 0;
+      const consumed = consumedByDate.get(occurrence.dateKey) || 0;
+      const attended = consumed < attendedSlots;
+      if (attended) consumedByDate.set(occurrence.dateKey, consumed + 1);
+      return { ...occurrence, attended };
+    });
+  }, [attendanceByDate, pastScheduledOccurrences]);
+
+  const attendedCount = scheduledAttendanceRows.filter((r) => r.attended).length;
+  const playerObservations = useMemo(
+    () => sessionObservations
+      .filter((item) => item.playerId === player.id)
+      .sort((a, b) => (b.recordedAt || 0) - (a.recordedAt || 0)),
+    [sessionObservations, player.id]
+  );
+  const coachingTimeline = useMemo(() => {
+    const attendanceEvents = scheduledAttendanceRows.slice(0, 30).map((row) => ({
+      id: `attendance-${row.id}`,
+      timestamp: new Date(`${row.dateKey}T12:00:00`).getTime(),
+      kind: 'attendance' as const,
+      title: row.attended ? 'Attended Session' : 'Missed Session',
+      subtitle: `${row.dateKey} • ${row.startTime}-${row.endTime}${row.location ? ` • ${row.location}` : ''}`,
+      badge: row.attended ? 'Present' : 'Absent',
+      tone: row.attended ? 'emerald' : 'amber',
+    }));
+    const observationEvents = playerObservations.slice(0, 30).map((item) => ({
+      id: `observation-${item.id}`,
+      timestamp: item.recordedAt,
+      kind: 'observation' as const,
+      title: item.drillOutcome ? `Observation • ${item.drillOutcome}` : 'Observation',
+      subtitle: item.focusSkill
+        ? `Focus: ${item.focusSkill} (${item.focusSkillRating || '-'}/5)`
+        : (item.note || 'Session note'),
+      badge: 'Coach Note',
+      tone: 'blue',
+    }));
+    return [...attendanceEvents, ...observationEvents]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 40);
+  }, [scheduledAttendanceRows, playerObservations]);
+  const recentObservationCount = useMemo(() => {
+    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    return playerObservations.filter((item) => item.recordedAt >= thirtyDaysAgo).length;
+  }, [playerObservations]);
 
   const handleStatChange = (stat: keyof PlayerStats, val: string) => {
     const num = Math.min(100, Math.max(0, parseInt(val) || 0));
@@ -107,9 +213,40 @@ export function PlayerDossier({
     setNewNote('');
   };
 
-  const handleCheckIn = () => {
-    const now = Date.now();
-    onUpdate({ ...player, attendance: [...attendance, now], updatedAt: now });
+  const handleAddScheduleSlot = () => {
+    const next = [...schedule, {
+      id: nanoid(),
+      date: '',
+      day: newScheduleDay,
+      startTime: newScheduleStartTime,
+      endTime: newScheduleEndTime,
+      location: newScheduleLocation.trim(),
+      sessionType: newScheduleType,
+      fee: undefined,
+    }];
+    onUpdate({ ...player, schedule: next, updatedAt: Date.now() });
+    setNewScheduleLocation('');
+  };
+
+  const handleRemoveScheduleSlot = (slotId: string) => {
+    const next = schedule.filter((slot) => {
+      const currentId = slot.id || `${slot.day}-${slot.startTime}-${slot.endTime}-${slot.location}`;
+      return currentId !== slotId;
+    });
+    onUpdate({ ...player, schedule: next, updatedAt: Date.now() });
+  };
+
+  const handleToggleScheduledAttendance = (dateKey: string, shouldAttend: boolean) => {
+    const nextAttendance = [...attendance];
+    if (shouldAttend) {
+      const existingCount = nextAttendance.filter((ts) => new Date(ts).toISOString().startsWith(dateKey)).length;
+      const ts = new Date(`${dateKey}T12:00:00.000Z`).getTime() + existingCount;
+      nextAttendance.push(ts);
+    } else {
+      const idx = nextAttendance.findIndex((ts) => new Date(ts).toISOString().startsWith(dateKey));
+      if (idx >= 0) nextAttendance.splice(idx, 1);
+    }
+    onUpdate({ ...player, attendance: nextAttendance, updatedAt: Date.now() });
   };
 
   return (
@@ -367,36 +504,108 @@ export function PlayerDossier({
                 </div>
               </Card>
 
-              {/* Attendance */}
-              <Card title="Attendance (Last 28 Days)" icon={<Calendar className="w-4 h-4" />}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-xs text-muted-foreground">
-                    {attendedCount} / 28 days
+              {/* Training Schedule */}
+              <Card title="Training Schedule" icon={<Clock className="w-4 h-4" />}>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Select value={newScheduleDay} onValueChange={setNewScheduleDay}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {DAY_OPTIONS.map((day) => (
+                          <SelectItem key={day} value={day}>{day}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={newScheduleType} onValueChange={(v: 'Private' | 'Semi' | 'Group') => setNewScheduleType(v)}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Private">Private</SelectItem>
+                        <SelectItem value="Semi">Semi</SelectItem>
+                        <SelectItem value="Group">Group</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Button size="sm" onClick={handleCheckIn} className="h-7 text-xs">
-                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Check In
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input type="time" value={newScheduleStartTime} onChange={(e) => setNewScheduleStartTime(e.target.value)} className="h-9" />
+                    <Input type="time" value={newScheduleEndTime} onChange={(e) => setNewScheduleEndTime(e.target.value)} className="h-9" />
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newScheduleLocation}
+                      onChange={(e) => setNewScheduleLocation(e.target.value)}
+                      placeholder="Location (optional)"
+                      className="h-9"
+                    />
+                    <Button size="sm" className="h-9" onClick={handleAddScheduleSlot}>
+                      Add
+                    </Button>
+                  </div>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar">
+                    {schedule.length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic text-center py-2">No recurring sessions yet.</p>
+                    ) : (
+                      schedule.map((slot) => {
+                        const slotId = slot.id || `${slot.day}-${slot.startTime}-${slot.endTime}-${slot.location}`;
+                        return (
+                        <div key={slotId} className="flex items-center justify-between p-2 rounded-lg bg-card/50 border border-border/50">
+                          <div className="text-xs">
+                            <div className="font-semibold">{slot.day} • {slot.startTime}-{slot.endTime}</div>
+                            <div className="text-muted-foreground">{slot.sessionType}{slot.location ? ` • ${slot.location}` : ''}</div>
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-red-500"
+                            onClick={() => handleRemoveScheduleSlot(slotId)}
+                          >
+                            ×
+                          </Button>
+                        </div>
+                      )})
+                    )}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1">
-                  {last30Days.map((d, i) => {
-                    const isAttended = attendance.some((ts: number) => 
-                      new Date(ts).toDateString() === d.toDateString()
-                    );
-                    return (
-                      <div 
-                        key={i} 
-                        className={cn(
-                          "h-6 w-6 rounded-md text-[8px] flex items-center justify-center font-mono",
-                          isAttended 
-                            ? "bg-emerald-500 text-white" 
-                            : "bg-secondary text-muted-foreground"
-                        )} 
-                        title={d.toDateString()}
-                      >
-                        {d.getDate()}
+              </Card>
+
+              {/* Attendance */}
+              <Card title="Attendance (Scheduled, Past Only)" icon={<Calendar className="w-4 h-4" />}>
+                <div className="text-xs text-muted-foreground mb-3">
+                  {attendedCount} / {scheduledAttendanceRows.length} past scheduled sessions marked present
+                </div>
+                <div className="space-y-1.5 max-h-56 overflow-y-auto custom-scrollbar">
+                  {scheduledAttendanceRows.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic text-center py-3">
+                      No past scheduled sessions yet.
+                    </p>
+                  ) : (
+                    scheduledAttendanceRows.map((row) => (
+                      <div key={row.id} className="flex items-center justify-between p-2 rounded-lg bg-card/50 border border-border/50">
+                        <div className="text-xs">
+                          <div className="font-semibold">
+                            {row.dateKey} • {row.startTime}-{row.endTime}
+                          </div>
+                          <div className="text-muted-foreground">{row.sessionType}{row.location ? ` • ${row.location}` : ''}</div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={row.attended ? 'secondary' : 'outline'}
+                          className={cn(
+                            "h-7 text-[10px] font-bold",
+                            row.attended ? "text-emerald-400 border-emerald-500/40" : "text-muted-foreground"
+                          )}
+                          onClick={() => handleToggleScheduledAttendance(row.dateKey, !row.attended)}
+                        >
+                          {row.attended ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Present
+                            </>
+                          ) : (
+                            'Mark Present'
+                          )}
+                        </Button>
                       </div>
-                    );
-                  })}
+                    ))
+                  )}
                 </div>
               </Card>
             </div>
@@ -425,6 +634,40 @@ export function PlayerDossier({
                       <div key={entry.id} className="p-3 rounded-lg bg-card/30 border border-border/50">
                         <div className="text-[10px] text-muted-foreground mb-1">{entry.date}</div>
                         <p className="text-xs leading-relaxed">{entry.content}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+
+              <Card title="Coaching Timeline" icon={<Activity className="w-4 h-4" />}>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-3">
+                  <span>{coachingTimeline.length} recent events</span>
+                  <span>{recentObservationCount} observations in last 30 days</span>
+                </div>
+                <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
+                  {coachingTimeline.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic text-center py-3">
+                      No attendance or observation history yet.
+                    </p>
+                  ) : (
+                    coachingTimeline.map((entry) => (
+                      <div key={entry.id} className="p-2.5 rounded-lg bg-card/40 border border-border/50">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-xs font-semibold">{entry.title}</div>
+                          <span className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded border font-bold",
+                            entry.tone === 'emerald' && "text-emerald-300 border-emerald-500/40 bg-emerald-500/10",
+                            entry.tone === 'amber' && "text-amber-200 border-amber-500/40 bg-amber-500/10",
+                            entry.tone === 'blue' && "text-blue-300 border-blue-500/40 bg-blue-500/10"
+                          )}>
+                            {entry.badge}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-muted-foreground mt-1">
+                          {new Date(entry.timestamp).toLocaleString()}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">{entry.subtitle}</div>
                       </div>
                     ))
                   )}
@@ -530,6 +773,7 @@ export function PlayerDossier({
           players={players || []}
           allClients={clients || []}
           sessions={sessions || []}
+          dayEvents={dayEvents}
           isOpen={true}
           onClose={() => setEditingClient(null)}
           onSave={(updated) => {

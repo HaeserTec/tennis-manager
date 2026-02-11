@@ -3,15 +3,17 @@ import { Search, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { Client, Player, TrainingSession, Payment } from '@/lib/playbook';
+import type { Client, Player, TrainingSession, Payment, DayEvent } from '@/lib/playbook';
+import { getSessionBillingForClient } from '@/lib/billing';
 
 interface AccountsStatementProps {
   clients: Client[];
   players: Player[];
   sessions: TrainingSession[];
+  dayEvents?: DayEvent[];
 }
 
-export function AccountsStatement({ clients, players, sessions }: AccountsStatementProps) {
+export function AccountsStatement({ clients, players, sessions, dayEvents = [] }: AccountsStatementProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -28,14 +30,16 @@ export function AccountsStatement({ clients, players, sessions }: AccountsStatem
        
        // 1. Calculate Opening Balance (Prior to this month)
        let openingFees = 0;
+       let openingCredits = 0;
        let openingPayments = 0;
 
        // Past Sessions
        sessions.forEach(s => {
           const sDate = new Date(s.date);
           if (sDate < currentMonthStart && s.participantIds.some(pid => clientPlayerIds.has(pid))) {
-             const involvedCount = s.participantIds.filter(pid => clientPlayerIds.has(pid)).length;
-             openingFees += (s.price || 0) * involvedCount;
+             const billing = getSessionBillingForClient(s, clientPlayerIds, dayEvents);
+             openingFees += billing.charge;
+             openingCredits += billing.credit;
           }
        });
 
@@ -47,7 +51,7 @@ export function AccountsStatement({ clients, players, sessions }: AccountsStatem
           }
        });
 
-       const openingBalance = openingFees - openingPayments;
+       const openingBalance = openingFees - openingCredits - openingPayments;
 
        // 2. Sessions in this month
        const monthlySessions = sessions.filter(s => {
@@ -57,11 +61,13 @@ export function AccountsStatement({ clients, players, sessions }: AccountsStatem
 
        // Calculate Current Fees
        let fees = 0;
+       let credits = 0;
        let sessionCount = 0;
        monthlySessions.forEach(s => {
-          const involvedCount = s.participantIds.filter(pid => clientPlayerIds.has(pid)).length;
-          fees += (s.price || 0) * involvedCount;
-          sessionCount += involvedCount;
+          const billing = getSessionBillingForClient(s, clientPlayerIds, dayEvents);
+          fees += billing.charge;
+          credits += billing.credit;
+          sessionCount += billing.involvedCount;
        });
 
        // 3. Payments in this month
@@ -73,13 +79,14 @@ export function AccountsStatement({ clients, players, sessions }: AccountsStatem
        const payments = monthlyPayments.reduce((sum, p) => sum + p.amount, 0);
        
        // 4. Final Balance
-       const balance = openingBalance + fees - payments;
+       const balance = openingBalance + fees - credits - payments;
 
        return {
           client,
           sessionCount,
           openingBalance,
           fees,
+          credits,
           payments,
           balance
        };
@@ -88,10 +95,11 @@ export function AccountsStatement({ clients, players, sessions }: AccountsStatem
     const totals = rows.reduce((acc, row) => ({
        openingBalance: acc.openingBalance + row.openingBalance,
        fees: acc.fees + row.fees,
+       credits: acc.credits + row.credits,
        payments: acc.payments + row.payments,
        balance: acc.balance + row.balance,
        count: acc.count + row.sessionCount
-    }), { openingBalance: 0, fees: 0, payments: 0, balance: 0, count: 0 });
+    }), { openingBalance: 0, fees: 0, credits: 0, payments: 0, balance: 0, count: 0 });
 
     return { rows, totals };
   }, [clients, players, sessions, currentDate, searchQuery]);
@@ -138,6 +146,7 @@ export function AccountsStatement({ clients, players, sessions }: AccountsStatem
                       <th className="py-3 px-4 text-right font-black uppercase tracking-wider text-xs text-muted-foreground">Brought Forward</th>
                       <th className="py-3 px-4 text-center font-black uppercase tracking-wider text-xs text-muted-foreground">Sessions</th>
                       <th className="py-3 px-4 text-right font-black uppercase tracking-wider text-xs text-muted-foreground">Expected (Fees)</th>
+                      <th className="py-3 px-4 text-right font-black uppercase tracking-wider text-xs text-muted-foreground">Credits</th>
                       <th className="py-3 px-4 text-right font-black uppercase tracking-wider text-xs text-muted-foreground">Paid</th>
                       <th className="py-3 px-4 text-right font-black uppercase tracking-wider text-xs text-muted-foreground">Balance</th>
                    </tr>
@@ -151,6 +160,7 @@ export function AccountsStatement({ clients, players, sessions }: AccountsStatem
                          </td>
                          <td className="py-3 px-4 text-center font-mono text-muted-foreground">{row.sessionCount}</td>
                          <td className="py-3 px-4 text-right font-mono">R {row.fees.toLocaleString()}</td>
+                         <td className="py-3 px-4 text-right font-mono text-blue-400">R {row.credits.toLocaleString()}</td>
                          <td className="py-3 px-4 text-right font-mono text-emerald-500 font-bold">R {row.payments.toLocaleString()}</td>
                          <td className={cn("py-3 px-4 text-right font-mono font-black", row.balance > 0 ? "text-red-500" : "text-muted-foreground")}>
                             R {row.balance.toLocaleString()}
@@ -158,7 +168,7 @@ export function AccountsStatement({ clients, players, sessions }: AccountsStatem
                       </tr>
                    ))}
                    {reportData.rows.length === 0 && (
-                      <tr><td colSpan={6} className="py-8 text-center text-muted-foreground italic">No data for this period.</td></tr>
+                      <tr><td colSpan={7} className="py-8 text-center text-muted-foreground italic">No data for this period.</td></tr>
                    )}
                 </tbody>
                 <tfoot className="bg-card border-t border-border">
@@ -167,6 +177,7 @@ export function AccountsStatement({ clients, players, sessions }: AccountsStatem
                       <td className="py-4 px-4 text-right font-black font-mono text-muted-foreground">R {reportData.totals.openingBalance.toLocaleString()}</td>
                       <td className="py-4 px-4 text-center font-black font-mono">{reportData.totals.count}</td>
                       <td className="py-4 px-4 text-right font-black font-mono text-lg">R {reportData.totals.fees.toLocaleString()}</td>
+                      <td className="py-4 px-4 text-right font-black font-mono text-lg text-blue-400">R {reportData.totals.credits.toLocaleString()}</td>
                       <td className="py-4 px-4 text-right font-black font-mono text-lg text-emerald-500">R {reportData.totals.payments.toLocaleString()}</td>
                       <td className={cn("py-4 px-4 text-right font-black font-mono text-xl", reportData.totals.balance > 0 ? "text-red-500" : "text-foreground")}>
                          R {reportData.totals.balance.toLocaleString()}
