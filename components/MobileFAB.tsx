@@ -6,7 +6,6 @@ import {
   ClipboardList, 
   Activity, 
   Users, 
-  LayoutTemplate, 
   Library,
   Briefcase,
   Menu,
@@ -116,18 +115,32 @@ export function MobileFAB({
         )}
 
         <FabItem 
-           label="The Squad" 
-           icon={<Users className="w-5 h-5" />} 
-           onClick={() => handleSelect(() => onNavigate('players'))}
-           active={currentMode === 'players' && !isHome}
-           color="text-orange-400"
-        />
-        <FabItem 
            label="Scoreboard" 
            icon={<Trophy className="w-5 h-5" />} 
            onClick={() => handleSelect(() => onNavigate('scoreboard'))}
            active={currentMode === 'scoreboard' && !isHome}
            color="text-yellow-400"
+        />
+        <FabItem 
+           label="Designer" 
+           icon={<Dumbbell className="w-5 h-5" />} 
+           onClick={() => handleSelect(() => onNavigate('standard'))}
+           active={(currentMode === 'standard' || currentMode === 'templates') && !isHome}
+           color="text-foreground"
+        />
+        <FabItem 
+           label="Planner" 
+           icon={<ClipboardList className="w-5 h-5" />} 
+           onClick={() => handleSelect(() => onNavigate('plans'))}
+           active={currentMode === 'plans' && !isHome}
+           color="text-emerald-400"
+        />
+        <FabItem 
+           label="Squad" 
+           icon={<Users className="w-5 h-5" />} 
+           onClick={() => handleSelect(() => onNavigate('players'))}
+           active={currentMode === 'players' && !isHome}
+           color="text-orange-400"
         />
         <FabItem 
            label="Office" 
@@ -137,11 +150,11 @@ export function MobileFAB({
            color="text-pink-400"
         />
         <FabItem 
-           label="Templates" 
-           icon={<LayoutTemplate className="w-5 h-5" />} 
-           onClick={() => handleSelect(() => onNavigate('templates'))}
-           active={currentMode === 'templates' && !isHome}
-           color="text-sky-400"
+           label="Sequences" 
+           icon={<Activity className="w-5 h-5" />} 
+           onClick={() => handleSelect(() => onNavigate('performance'))}
+           active={currentMode === 'performance' && !isHome}
+           color="text-indigo-400"
         />
         <FabItem 
            label="Library" 
@@ -149,27 +162,6 @@ export function MobileFAB({
            onClick={() => handleSelect(() => onNavigate('library'))}
            active={currentMode === 'library' && !isHome}
            color="text-cyan-400"
-        />
-        <FabItem 
-           label="Plans" 
-           icon={<ClipboardList className="w-5 h-5" />} 
-           onClick={() => handleSelect(() => onNavigate('plans'))}
-           active={currentMode === 'plans' && !isHome}
-           color="text-emerald-400"
-        />
-        <FabItem 
-           label="Drills" 
-           icon={<Dumbbell className="w-5 h-5" />} 
-           onClick={() => handleSelect(() => onNavigate('standard'))}
-           active={currentMode === 'standard' && !isHome}
-           color="text-foreground"
-        />
-        <FabItem 
-           label="Sequences" 
-           icon={<Activity className="w-5 h-5" />} 
-           onClick={() => handleSelect(() => onNavigate('performance'))}
-           active={currentMode === 'performance' && !isHome}
-           color="text-indigo-400"
         />
         <FabItem 
            label="Home" 

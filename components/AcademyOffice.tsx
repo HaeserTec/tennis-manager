@@ -67,6 +67,18 @@ const getLocalISODate = (date: Date): string => {
    return localDate.toISOString().split('T')[0];
 };
 
+function useLiveNow(intervalMs = 30000) {
+   const [now, setNow] = useState(() => new Date());
+
+   useEffect(() => {
+      const tick = () => setNow(new Date());
+      const id = window.setInterval(tick, intervalMs);
+      return () => window.clearInterval(id);
+   }, [intervalMs]);
+
+   return now;
+}
+
 export function AcademyOffice({
   players, drills, locations, clients, sessions, dayEvents = [], expenses = [],
   sessionObservations, onAddSessionObservation, onUpsertClient, onDeleteClient, onMergeClients,
@@ -334,7 +346,7 @@ function NavTab({ id, label, icon, active, onClick }: { id: Tab, label: string, 
 }
 
 function SchedulerWorkspace({ players, locations, sessions, dayEvents = [], onUpsertSession, onDeleteSession, upsertDayEvent, deleteDayEvent }: any) {
-   const [currentDate, setCurrentDate] = useState(new Date("2026-01-26"));
+   const [currentDate, setCurrentDate] = useState(() => new Date());
    const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('week');
    const [selectedSessionType, setSelectedSessionType] = useState<SessionType>('Private');
    const [selectedLocation, setSelectedLocation] = useState<string>("Main Court");
@@ -755,6 +767,7 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
    const MIN_ROW_HEIGHT = 28;
    const SESSION_CHROME_HEIGHT = 30;
    const PLAYER_LINE_HEIGHT = 14;
+   const now = useLiveNow();
 
    const weekSessionsByDate = useMemo(() => {
       const map = new Map<string, any[]>();
@@ -820,9 +833,15 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
       return block.top + (block.heightPx * progress);
    }, [blocks]);
 
+   const todayStr = getLocalISODate(now);
+   const todayIndex = weekDays.findIndex((day: Date) => getLocalISODate(day) === todayStr);
+   const showNowMarker = todayIndex !== -1;
+   const nowMinutes = (now.getHours() * 60) + now.getMinutes() + (now.getSeconds() / 60);
+   const nowTop = getOffsetFromMinutes(nowMinutes);
+
    return (
-      <div className="min-w-[640px] h-full flex flex-col relative">
-         <div className="grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 bg-background/50 sticky top-0 z-10">
+      <div className="min-w-[525px] h-full flex flex-col relative">
+         <div className="grid grid-cols-[3.2rem_repeat(7,1fr)] border-b border-border/50 bg-background/50 sticky top-0 z-10">
             <div className="border-r border-border/50 bg-card/30" />
             {weekDays.map((day: Date, i: number) => {
                const dateStr = getLocalISODate(day), dayEvent = dayEvents.find((e: any) => e.date === dateStr);
@@ -863,7 +882,7 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
          </div>
          <div className="flex-1 overflow-y-auto relative">
             {/* Background Grid */}
-            <div className="absolute inset-0 grid grid-cols-[4rem_repeat(7,1fr)] pointer-events-none z-0">
+            <div className="absolute inset-0 grid grid-cols-[3.2rem_repeat(7,1fr)] pointer-events-none z-0">
                <div className="border-r border-border/50 bg-card/5" />
                {weekDays.map((_:any, i:number) => (
                   <div key={i} className="border-r border-border/50" />
@@ -874,7 +893,7 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
             {blocks.map((block: any) => (
                <div
                   key={block.time}
-                  className="grid grid-cols-[4rem_repeat(7,1fr)] border-b border-border/50 relative z-0"
+                  className="grid grid-cols-[3.2rem_repeat(7,1fr)] border-b border-border/50 relative z-0"
                   style={{ height: `${block.heightPx}px` }}
                >
                   <div className="border-r border-border/50 flex justify-center items-start pt-1 bg-card/10 text-[10px] font-mono text-muted-foreground">{block.time}</div>
@@ -898,8 +917,28 @@ function WeekView({ dayEvents = [], weekDays, sessionMap, onDrop, onEdit, onRemo
                </div>
             ))}
 
+            {showNowMarker && (
+               <div
+                  className="absolute left-0 right-0 pointer-events-none grid grid-cols-[3.2rem_repeat(7,1fr)] z-30"
+                  style={{ top: `${nowTop}px` }}
+               >
+                  <div />
+                  {weekDays.map((_: Date, i: number) => (
+                     <div key={i} className="relative">
+                        <div className={cn("h-[2px] bg-red-500/90", i !== todayIndex && "opacity-35")} />
+                        {i === todayIndex && (
+                           <div className="absolute left-2 -top-3 flex items-center gap-1 text-[10px] font-mono text-red-500">
+                              <span className="h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-background" />
+                              <span>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                           </div>
+                        )}
+                     </div>
+                  ))}
+               </div>
+            )}
+
             {/* Absolute Sessions Layer */}
-            <div className="absolute left-0 right-0 top-0 pointer-events-none grid grid-cols-[4rem_repeat(7,1fr)] z-10" style={{ height: `${totalHeight}px` }}>
+            <div className="absolute left-0 right-0 top-0 pointer-events-none grid grid-cols-[3.2rem_repeat(7,1fr)] z-10" style={{ height: `${totalHeight}px` }}>
                <div /> {/* Time column padding */}
                {weekDays.map((day: Date, dayIdx: number) => {
                   const dateStr = getLocalISODate(day);
@@ -1001,6 +1040,7 @@ function MonthView({ currentDate, events, dayEvents = [], location, onEdit }: an
 }
 
 function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, onEdit, onRemovePlayer, onResizeStart, onCellClick, location, startHour, endHour }: any) {
+   const now = useLiveNow();
    const dateStr = getLocalISODate(currentDate), dayEvent = dayEvents.find((e: any) => e.date === dateStr);
    
    const daySessions = Array.from(sessionMap.entries())
@@ -1059,6 +1099,10 @@ function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, onEdit, onRe
       return block.top + (block.heightPx * progress);
    }, [blocks]);
 
+   const isToday = getLocalISODate(now) === dateStr;
+   const nowMinutes = (now.getHours() * 60) + now.getMinutes() + (now.getSeconds() / 60);
+   const nowTop = getOffsetFromMinutes(nowMinutes);
+
    return (
       <div className="max-w-3xl mx-auto h-full p-4 relative">
          {dayEvent && <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"><div className={cn("backdrop-blur-[1px] border p-6 rounded-2xl transform rotate-12 shadow-2xl", dayEvent.type === 'Rain' ? "bg-blue-500/10 border-blue-500/50" : "bg-red-500/10 border-red-500/50")}><h2 className={cn("text-4xl font-black uppercase tracking-tighter flex items-center gap-4", dayEvent.type === 'Rain' ? "text-blue-500" : "text-red-500")}>{dayEvent.type === 'Rain' ? <><CloudRain className="w-10 h-10" /> Rain Out</> : <><Ban className="w-10 h-10" /> Cancelled</>}</h2></div></div>}
@@ -1071,7 +1115,7 @@ function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, onEdit, onRe
                   onDragOver={e => e.preventDefault()} 
                   onDrop={e => onDrop(e, currentDate, block.time)}
                >
-                  <div className="w-20 shrink-0 border-r border-border/50 bg-secondary/20 flex items-center justify-center font-mono font-bold text-muted-foreground text-xs">{block.time}</div>
+                  <div className="w-16 shrink-0 border-r border-border/50 bg-secondary/20 flex items-center justify-center font-mono font-bold text-muted-foreground text-xs">{block.time}</div>
                   <div className="flex-1 relative">
                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity pointer-events-none">
                         <button 
@@ -1087,7 +1131,7 @@ function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, onEdit, onRe
 
             {/* Absolute Sessions Layer */}
             <div className="absolute left-0 right-0 top-0 pointer-events-none flex" style={{ height: `${totalHeight}px` }}>
-               <div className="w-20 shrink-0" />
+               <div className="w-16 shrink-0" />
                <div className="flex-1 relative">
                   {daySessions.map((s: any) => {
                      const [startH, startM] = s.startTime.split(':').map(Number);
@@ -1137,6 +1181,18 @@ function DayView({ currentDate, sessionMap, dayEvents = [], onDrop, onEdit, onRe
                   })}
                </div>
             </div>
+            {isToday && (
+               <div className="absolute left-0 right-0 pointer-events-none z-30 flex" style={{ top: `${nowTop}px` }}>
+                  <div className="w-16 shrink-0" />
+                  <div className="flex-1 relative">
+                     <div className="h-[2px] bg-red-500/90" />
+                     <div className="absolute left-2 -top-3 flex items-center gap-1 text-[10px] font-mono text-red-500">
+                        <span className="h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-background" />
+                        <span>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                     </div>
+                  </div>
+               </div>
+            )}
          </div>
       </div>
    );

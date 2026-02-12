@@ -6,7 +6,6 @@ import {
   ClipboardList, 
   Activity, 
   Users, 
-  LayoutTemplate, 
   Library,
   Settings, 
   Download, 
@@ -69,9 +68,17 @@ import {
         {/* Main Nav */}
         <div className="flex-1 flex flex-col gap-4 w-full px-2">
           <NavButton 
+            icon={<Trophy className="w-5 h-5" />} 
+            label="Scoreboard" 
+            isActive={currentMode === 'scoreboard' && !isHome} 
+            onClick={() => onNavigate('scoreboard')}
+            colorClass="text-yellow-400"
+            activeClass="bg-yellow-500/20 text-yellow-400 border border-yellow-500/20 shadow-[0_0_15px_-3px_rgba(250,204,21,0.3)]"
+          />
+          <NavButton 
             icon={<Dumbbell className="w-5 h-5" />} 
-            label="Drills" 
-            isActive={currentMode === 'standard' && !isHome} 
+            label="Designer" 
+            isActive={(currentMode === 'standard' || currentMode === 'templates') && !isHome} 
             onClick={() => onNavigate('standard')}
             colorClass="text-foreground"
             activeClass="bg-secondary/50 text-foreground border border-white/5 shadow-lg"
@@ -85,28 +92,12 @@ import {
             activeClass="bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 shadow-[0_0_15px_-3px_rgba(16,185,129,0.3)]"
           />
           <NavButton 
-            icon={<Activity className="w-5 h-5" />} 
-            label="Sequences" 
-            isActive={currentMode === 'performance' && !isHome} 
-            onClick={() => onNavigate('performance')}
-            colorClass="text-indigo-400"
-            activeClass="bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 shadow-[0_0_15px_-3px_rgba(99,102,241,0.3)]"
-          />
-          <NavButton 
             icon={<Users className="w-5 h-5" />} 
-            label="The Squad" 
+            label="Squad" 
             isActive={currentMode === 'players' && !isHome} 
             onClick={() => onNavigate('players')}
             colorClass="text-orange-400"
             activeClass="bg-orange-500/20 text-orange-400 border border-orange-500/20 shadow-[0_0_15px_-3px_rgba(251,146,60,0.3)]"
-          />
-          <NavButton 
-            icon={<Trophy className="w-5 h-5" />} 
-            label="Scoreboard" 
-            isActive={currentMode === 'scoreboard' && !isHome} 
-            onClick={() => onNavigate('scoreboard')}
-            colorClass="text-yellow-400"
-            activeClass="bg-yellow-500/20 text-yellow-400 border border-yellow-500/20 shadow-[0_0_15px_-3px_rgba(250,204,21,0.3)]"
           />
   
           <NavButton 
@@ -116,7 +107,15 @@ import {
             onClick={() => onNavigate('office')}
             colorClass="text-pink-400"
             activeClass="bg-pink-500/20 text-pink-400 border border-pink-500/20 shadow-[0_0_15px_-3px_rgba(244,114,182,0.3)]"
-          />        
+          />
+          <NavButton 
+            icon={<Activity className="w-5 h-5" />} 
+            label="Sequences" 
+            isActive={currentMode === 'performance' && !isHome} 
+            onClick={() => onNavigate('performance')}
+            colorClass="text-indigo-400"
+            activeClass="bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 shadow-[0_0_15px_-3px_rgba(99,102,241,0.3)]"
+          />
         <div className="h-px w-8 bg-border/50 mx-auto my-2" />
         
         <NavButton 
@@ -126,15 +125,6 @@ import {
           onClick={() => onNavigate('library')}
           colorClass="text-cyan-400"
           activeClass="bg-cyan-500/20 text-cyan-300 border border-cyan-500/20 shadow-[0_0_15px_-3px_rgba(34,211,238,0.3)]"
-        />
-        
-        <NavButton 
-          icon={<LayoutTemplate className="w-5 h-5" />} 
-          label="Templates" 
-          isActive={currentMode === 'templates' && !isHome} 
-          onClick={() => onNavigate('templates')}
-          colorClass="text-sky-400"
-          activeClass="bg-sky-500/20 text-sky-300 border border-sky-500/20 shadow-[0_0_15px_-3px_rgba(56,189,248,0.3)]"
         />
       </div>
 

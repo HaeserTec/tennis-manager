@@ -356,6 +356,7 @@ export function calculateDashboardStats(players: Player[], sessions: TrainingSes
 export function getRevenueChartData(sessions: TrainingSession[], period: 'week' | 'month' | 'year'): ChartData[] {
   const data: ChartData[] = [];
   const now = new Date();
+  const defaultRateByType: Record<string, number> = { Private: 350, Semi: 250, Group: 200 };
   
   // Helpers to format Local Date strings safely
   const toLocalISO = (d: Date) => {
@@ -363,73 +364,112 @@ export function getRevenueChartData(sessions: TrainingSession[], period: 'week' 
       return new Date(d.getTime() - offset).toISOString().split('T')[0];
   };
 
-  const getDayVal = (s: TrainingSession) => (s.price || 0) * (s.participantIds.length || 0);
+  const getDayVal = (s: TrainingSession) => {
+      const baseRate = (typeof s.price === 'number' && s.price > 0)
+         ? s.price
+         : (defaultRateByType[s.type] || 0);
+      const participantCount = Array.isArray(s.participantIds) ? s.participantIds.length : 0;
+      // For planning analytics, treat an unslotted session as one billable slot.
+      const effectiveParticipants = participantCount > 0 ? participantCount : 1;
+      return baseRate * effectiveParticipants;
+  };
+  const toKey = (y: number, m: number, d: number) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const parseDateParts = (dateStr: string) => {
+    const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(dateStr);
+    if (m) {
+      const year = Number(m[1]);
+      const month = Number(m[2]);
+      const day = Number(m[3]);
+      if (year > 0 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return { year, month, day, key: toKey(year, month, day), date: new Date(year, month - 1, day) };
+      }
+    }
+    const fallback = new Date(dateStr);
+    if (!isNaN(fallback.getTime())) {
+      const year = fallback.getFullYear();
+      const month = fallback.getMonth() + 1;
+      const day = fallback.getDate();
+      return { year, month, day, key: toKey(year, month, day), date: new Date(year, month - 1, day) };
+    }
+    return null;
+  };
+
+  const parsedSessions = sessions
+    .map((s) => {
+      const parts = parseDateParts(s.date);
+      if (!parts) return null;
+      return { ...parts, value: getDayVal(s) };
+    })
+    .filter((x): x is { year: number; month: number; day: number; key: string; date: Date; value: number } => x !== null);
 
   if (period === 'week') {
-    // Generate buckets for the last 7 days including today
+    // Generate buckets for the last 7 days including anchor day.
+    // If current week has no data, anchor to latest session date.
+    let anchor = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayKey = toLocalISO(anchor);
+    const inCurrentWindow = new Set<string>();
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(now.getDate() - i);
-      const dateKey = toLocalISO(d); // "2026-02-10"
+      const d = new Date(anchor);
+      d.setDate(anchor.getDate() - i);
+      inCurrentWindow.add(toLocalISO(d));
+    }
+    const hasCurrentWindowData = parsedSessions.some((s) => inCurrentWindow.has(s.key));
+    if (!hasCurrentWindowData && parsedSessions.length > 0) {
+      anchor = parsedSessions.reduce((latest, s) => (s.date > latest ? s.date : latest), parsedSessions[0].date);
+    }
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(anchor);
+      d.setDate(anchor.getDate() - i);
+      const dateKey = toLocalISO(d);
       
       let val = 0;
-      sessions.forEach(s => {
-         // Strict String Equality
-         if (s.date === dateKey) {
-            val += getDayVal(s);
+      parsedSessions.forEach(s => {
+         if (s.key === dateKey) {
+            val += s.value;
          }
       });
       data.push({ label: d.toLocaleDateString('en-US', { weekday: 'short' }), value: val });
     }
 
   } else if (period === 'month') {
-     // String-based bucket logic for current month
-     // 1. Get current "YYYY-MM" prefix
-     const currentYear = now.getFullYear();
-     const currentMonth = now.getMonth() + 1; // 1-based for string
-     const prefix = `${currentYear}-${String(currentMonth).padStart(2, '0')}`; // e.g. "2026-02"
+     // Use current month; fallback to latest month with data.
+     let targetYear = now.getFullYear();
+     let targetMonth = now.getMonth() + 1;
+     const hasCurrentMonthData = parsedSessions.some((s) => s.year === targetYear && s.month === targetMonth);
+     if (!hasCurrentMonthData && parsedSessions.length > 0) {
+        const latest = parsedSessions.reduce((best, s) => (s.date > best.date ? s : best), parsedSessions[0]);
+        targetYear = latest.year;
+        targetMonth = latest.month;
+     }
 
-     // 2. Initialize 5 buckets (Week 1 to Week 5)
      const weeks = [0, 0, 0, 0, 0];
 
-     sessions.forEach(s => {
-        // Only process sessions belonging to this month string
-        if (s.date && s.date.startsWith(prefix)) {
-           // Parse the day part "2026-02-15" -> 15
-           const dayPart = s.date.split('-')[2]; 
-           const day = parseInt(dayPart, 10);
-           
-           if (!isNaN(day)) {
-              // Calculate bucket: (Day 1-7 -> Index 0), (Day 8-14 -> Index 1)...
-              const weekIdx = Math.floor((day - 1) / 7);
-              // Clamp to index 4 (Week 5) for days 29, 30, 31
-              const safeIdx = Math.min(weekIdx, 4);
-              
-              weeks[safeIdx] += getDayVal(s);
-           }
+     parsedSessions.forEach(s => {
+        if (s.year === targetYear && s.month === targetMonth) {
+           const weekIdx = Math.floor((s.day - 1) / 7);
+           const safeIdx = Math.min(weekIdx, 4);
+           weeks[safeIdx] += s.value;
         }
      });
 
-     // 3. Map to ChartData
      weeks.forEach((val, i) => {
         data.push({ label: `Week ${i + 1}`, value: val });
      });
 
   } else {
-     // Year View
-     const currentYearStr = String(now.getFullYear()); // "2026"
+     // Use current year; fallback to latest year with data.
+     let targetYear = now.getFullYear();
+     const hasCurrentYearData = parsedSessions.some((s) => s.year === targetYear);
+     if (!hasCurrentYearData && parsedSessions.length > 0) {
+        targetYear = parsedSessions.reduce((best, s) => (s.date > best.date ? s : best), parsedSessions[0]).year;
+     }
+
      const months = Array(12).fill(0);
 
-     sessions.forEach(s => {
-        // Only process sessions starting with "2026"
-        if (s.date && s.date.startsWith(currentYearStr)) {
-           // Parse month part "2026-02-15" -> 02
-           const monthPart = s.date.split('-')[1];
-           const month = parseInt(monthPart, 10); // 1-12
-           
-           if (!isNaN(month) && month >= 1 && month <= 12) {
-              months[month - 1] += getDayVal(s);
-           }
+     parsedSessions.forEach(s => {
+        if (s.year === targetYear && s.month >= 1 && s.month <= 12) {
+           months[s.month - 1] += s.value;
         }
      });
 

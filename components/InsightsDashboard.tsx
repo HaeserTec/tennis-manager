@@ -17,6 +17,7 @@ export function InsightsDashboard({ players, sessions, clients, expenses }: Insi
   
   const stats = useMemo(() => calculateDashboardStats(players, sessions, clients, expenses), [players, sessions, clients, expenses]);
   const chartData = useMemo(() => getRevenueChartData(sessions, chartPeriod), [sessions, chartPeriod]);
+  const hasRevenueValues = useMemo(() => chartData.some(d => d.value > 0), [chartData]);
   const heatmapData = useMemo(() => getHeatmapData(sessions), [sessions]);
   const clientHealth = useMemo(() => getClientHealth(players, sessions), [players, sessions]);
   
@@ -100,14 +101,19 @@ export function InsightsDashboard({ players, sessions, clients, expenses }: Insi
 
             <div className="h-64 flex items-end gap-2 px-2 relative z-10">
                {chartData.map((d, i) => {
-                  const max = Math.max(...chartData.map(x => x.value), 100);
+                  const max = Math.max(...chartData.map(x => x.value), 1);
                   const h = (d.value / max) * 100;
                   return (
-                     <div key={i} className="flex-1 flex flex-col items-center gap-2 group/bar">
-                        <div className="w-full relative h-full flex items-end">
+                     <div key={i} className="flex-1 h-full flex flex-col justify-end items-center gap-2 group/bar">
+                        <div className="w-full relative flex-1 flex items-end min-h-[140px]">
+                           {d.value > 0 && (
+                              <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-mono font-bold text-foreground/80 whitespace-nowrap">
+                                 R{Math.round(d.value)}
+                              </span>
+                           )}
                            <div 
                               className="w-full bg-gradient-to-t from-primary/80 to-purple-500 rounded-t-md opacity-80 group-hover/bar:opacity-100 transition-all duration-300"
-                              style={{ height: `${Math.max(h, 2)}%`, animationDelay: `${i * 50}ms` }}
+                              style={{ height: `${Math.max(h, d.value > 0 ? 2 : 0.5)}%`, animationDelay: `${i * 50}ms` }}
                            ></div>
                         </div>
                         <span className="text-[10px] text-muted-foreground group-hover/bar:text-foreground font-mono transition-colors">{d.label}</span>
@@ -115,6 +121,11 @@ export function InsightsDashboard({ players, sessions, clients, expenses }: Insi
                   )
                })}
             </div>
+            {!hasRevenueValues && (
+               <div className="text-xs text-amber-300/90 mt-3 px-2">
+                  No billable values in this period. Switch period or add prices to sessions.
+               </div>
+            )}
          </div>
 
          <div className="p-6 rounded-2xl bg-card/30 backdrop-blur border border-white/5 shadow-xl flex flex-col items-center justify-center relative">

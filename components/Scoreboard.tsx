@@ -44,8 +44,12 @@ const METRIC_DESCRIPTIONS: Record<string, Record<string, string>> = {
 };
 
 export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHome }: ScoreboardProps) {
+  const getLocalISODate = (date: Date) => {
+    const offset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offset).toISOString().split('T')[0];
+  };
   const [viewMode, setViewMode] = useState<'daily' | 'leaderboard'>('daily');
-  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toLocaleDateString('en-CA'));
+  const [selectedDate, setSelectedDate] = useState<string>(() => getLocalISODate(new Date()));
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   
@@ -112,7 +116,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
   const handleDateChange = (days: number) => {
     const d = new Date(selectedDate);
     d.setDate(d.getDate() + days);
-    setSelectedDate(d.toLocaleDateString('en-CA'));
+    setSelectedDate(getLocalISODate(d));
   };
 
   const handleSort = (key: string) => {

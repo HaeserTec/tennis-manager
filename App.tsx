@@ -129,6 +129,11 @@ const DEFAULT_COACH_PROFILE: CoachProfile = {
   }
 };
 
+const getLocalISODate = (date: Date) => {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().split('T')[0];
+};
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthState>(null);
 
@@ -780,10 +785,54 @@ export default function App() {
     downloadTextFile(`vgta-backup-${new Date().toISOString().split('T')[0]}.json`, JSON.stringify(backup, null, 2));
   }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms]);
 
-  // Scoreboard Stats for Dashboard
-  const todayKey = new Date().toLocaleDateString('en-CA');
-  const loggedCount = new Set(logs.filter(l => l.date === todayKey).map(l => l.playerId)).size;
-  const activeCount = players.filter(p => p.account?.status !== 'Inactive').length;
+  // Home Dashboard Stats
+  const todayKey = getLocalISODate(new Date());
+  const activePlayers = useMemo(
+    () => players.filter(p => p.account?.status !== 'Inactive'),
+    [players]
+  );
+  const activePlayerIds = useMemo(
+    () => new Set(activePlayers.map(p => p.id)),
+    [activePlayers]
+  );
+  const loggedTodayPlayerIds = useMemo(
+    () => new Set(logs.filter(l => l.date === todayKey).map(l => l.playerId).filter(id => activePlayerIds.has(id))),
+    [logs, todayKey, activePlayerIds]
+  );
+  const loggedCount = loggedTodayPlayerIds.size;
+  const activeCount = activePlayers.length;
+
+  const todaySessions = useMemo(
+    () => sessions.filter(s => s.date === todayKey),
+    [sessions, todayKey]
+  );
+  const scheduledTodayPlayerIds = useMemo(
+    () => new Set(
+      todaySessions
+        .flatMap(s => s.participantIds)
+        .filter(pid => activePlayerIds.has(pid))
+    ),
+    [todaySessions, activePlayerIds]
+  );
+  const scheduledTodayCount = scheduledTodayPlayerIds.size;
+  const loggedScheduledCount = useMemo(
+    () => Array.from(loggedTodayPlayerIds).filter(pid => scheduledTodayPlayerIds.has(pid)).length,
+    [loggedTodayPlayerIds, scheduledTodayPlayerIds]
+  );
+  const unloggedScheduledCount = Math.max(0, scheduledTodayCount - loggedScheduledCount);
+
+  const sortByRecent = useCallback(<T extends { createdAt?: number; updatedAt?: number }>(items: T[]) => {
+    return [...items].sort((a, b) => {
+      const aTs = a.updatedAt ?? a.createdAt ?? 0;
+      const bTs = b.updatedAt ?? b.createdAt ?? 0;
+      return bTs - aTs;
+    });
+  }, []);
+
+  const recentDrills = useMemo(() => sortByRecent(drills), [drills, sortByRecent]);
+  const recentPlans = useMemo(() => sortByRecent(plans), [plans, sortByRecent]);
+  const recentSequences = useMemo(() => sortByRecent(sequences), [sequences, sortByRecent]);
+  const recentPlayers = useMemo(() => sortByRecent(players), [players, sortByRecent]);
 
   // ROUTING & AUTH CHECK
   if (!currentUser) {
@@ -1258,11 +1307,12 @@ export default function App() {
             <HomeDashboard 
                stats={{ drills: drills.length, plans: plans.length, sequences: sequences.length, players: players.length }}
                scoreboard={{ logged: loggedCount, total: activeCount }}
-               recents={{ drills, plans, sequences, players }}
+               recents={{ drills: recentDrills, plans: recentPlans, sequences: recentSequences, players: recentPlayers }}
+               coachPulse={{ sessionsToday: todaySessions.length, scheduledPlayers: scheduledTodayCount, pendingLogs: unloggedScheduledCount }}
                onQuickAction={(action) => {
-                  if (action === 'new-drill') { handleNavigate('standard'); handleCreateNew(); }
-                  if (action === 'new-plan') { handleNavigate('plans'); handleCreateNew(); }
-                  if (action === 'new-sequence') { handleNavigate('performance'); handleCreateNew(); }
+                  if (action === 'new-drill') { handleNavigate('standard'); }
+                  if (action === 'new-plan') { handleNavigate('plans'); }
+                  if (action === 'new-sequence') { handleNavigate('performance'); }
                   if (action === 'open-locker-room') { handleNavigate('players'); }
                   if (action === 'open-office') { handleNavigate('office'); }
                   if (action === 'open-scoreboard') { handleNavigate('scoreboard'); }
@@ -1271,6 +1321,14 @@ export default function App() {
                   if (type === 'drill') {
                     handleNavigate('standard');
                     handleSelectDrill(drills.find(d => d.id === id)!);
+                  }
+                  if (type === 'plan') {
+                    handleNavigate('plans');
+                    setActivePlanId(id);
+                  }
+                  if (type === 'sequence') {
+                    handleNavigate('performance');
+                    setActiveSequenceId(id);
                   }
                   if (type === 'player') {
                     setPendingPlayerId(id);
