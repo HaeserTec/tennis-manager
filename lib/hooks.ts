@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Player, SessionLog, Drill, DrillCategory, DrillTag, DrillCollection, ProgressGoal, STORAGE_KEYS, DEFAULT_DRILL_CATEGORIES, Client, TrainingSession, DayEvent } from './playbook';
 import { getPlayerProgressHistory, calculateMetricTrend, getSessionComparison, getGoalProgress } from './analytics';
 import { getSessionBillingForClient } from './billing';
+import { parseISODateLocal, toLocalISODate } from './utils';
 
 // ============================================
 // PROGRESS TRACKING HOOKS
@@ -29,7 +30,7 @@ export function useProgress(playerId: string | null, logs: SessionLog[]) {
     if (!playerId || logs.length === 0) return null;
     return logs
       .filter(l => l.playerId === playerId)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0] || null;
+      .sort((a, b) => parseISODateLocal(b.date).getTime() - parseISODateLocal(a.date).getTime())[0] || null;
   }, [playerId, logs]);
 
   return { history, trends, latestSession };
@@ -329,8 +330,8 @@ export function useClientFinancials(
   currentDate: Date
 ) {
   return useMemo(() => {
-    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
-    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).toISOString().split('T')[0];
+    const startOfMonth = toLocalISODate(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1));
+    const endOfMonth = toLocalISODate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0));
 
     let totalOpening = 0;
     let totalFees = 0;
@@ -435,8 +436,8 @@ export function useLedgerEntries(
 ) {
   return useMemo(() => {
     let entries: LedgerEntry[] = [];
-    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
-    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).toISOString().split('T')[0];
+    const startOfMonth = toLocalISODate(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1));
+    const endOfMonth = toLocalISODate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0));
 
     // Filter scope
     const scope = selectedClientId 

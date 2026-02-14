@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { cn, nanoid } from '@/lib/utils';
+import { cn, nanoid, parseISODateLocal } from '@/lib/utils';
 import type { Player, SessionLog, ProgressGoal, ProgressMetric } from '@/lib/playbook';
 import { ProgressChart, TrendIndicator } from '@/components/ProgressChart';
 import { useProgress, usePlayerGoals, useGoalProgress } from '@/lib/hooks';
@@ -37,7 +37,7 @@ export function PlayerProgress({ player, logs, onUpdatePlayer, onNavigateBack }:
   const currentScores = useMemo(() => {
     const latest = logs
       .filter(l => l.playerId === player.id)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+      .sort((a, b) => parseISODateLocal(b.date).getTime() - parseISODateLocal(a.date).getTime())[0];
     return latest ? {
       tech: latest.tech,
       consistency: latest.consistency,
@@ -52,7 +52,7 @@ export function PlayerProgress({ player, logs, onUpdatePlayer, onNavigateBack }:
   const filteredHistory = useMemo(() => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - timeRange * 7);
-    return history.filter(h => new Date(h.date) >= cutoff);
+    return history.filter(h => parseISODateLocal(h.date) >= cutoff);
   }, [history, timeRange]);
 
   const handleAddGoal = () => {
@@ -361,7 +361,7 @@ function TrendsTab({
 // History Tab
 function HistoryTab({ logs }: { logs: SessionLog[] }) {
   const sortedLogs = useMemo(() => {
-    return [...logs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return [...logs].sort((a, b) => parseISODateLocal(b.date).getTime() - parseISODateLocal(a.date).getTime());
   }, [logs]);
 
   if (sortedLogs.length === 0) {
@@ -390,7 +390,7 @@ function HistoryTab({ logs }: { logs: SessionLog[] }) {
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-muted-foreground" />
                 <span className="text-sm font-medium">
-                  {new Date(log.date).toLocaleDateString('en-US', { 
+                  {parseISODateLocal(log.date).toLocaleDateString('en-US', { 
                     weekday: 'short', 
                     month: 'short', 
                     day: 'numeric',

@@ -1,4 +1,5 @@
 import { Player, SessionLog, ProgressGoal, ProgressMetric, Drill, TrainingSession, Client, Expense } from './playbook';
+import { parseISODateLocal, toLocalISODate } from './utils';
 
 export interface ScoreData {
   tech: number;
@@ -63,7 +64,7 @@ export interface TrendData {
 export function getPlayerProgressHistory(playerId: string, logs: SessionLog[]): ProgressChartData[] {
   const playerLogs = logs
     .filter(log => log.playerId === playerId)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    .sort((a, b) => parseISODateLocal(a.date).getTime() - parseISODateLocal(b.date).getTime());
 
   return playerLogs.map(log => ({
     date: log.date,
@@ -164,8 +165,8 @@ export function getTopImprovers(players: Player[], logs: SessionLog[], metric: P
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - weeks * 7);
 
-  const recentLogs = logs.filter(log => new Date(log.date) >= cutoffDate);
-  const oldLogs = logs.filter(log => new Date(log.date) < cutoffDate);
+  const recentLogs = logs.filter(log => parseISODateLocal(log.date) >= cutoffDate);
+  const oldLogs = logs.filter(log => parseISODateLocal(log.date) < cutoffDate);
 
   return players
     .map(player => {
@@ -252,12 +253,12 @@ export function calculateDashboardStats(players: Player[], sessions: TrainingSes
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60000;
   const localNow = new Date(now.getTime() - offset);
-  const todayStr = localNow.toISOString().split('T')[0];
-  const startOfYear = new Date(localNow.getFullYear(), 0, 1).toISOString().split('T')[0];
+  const todayStr = toLocalISODate(localNow);
+  const startOfYear = toLocalISODate(new Date(localNow.getFullYear(), 0, 1));
   
   // Calculate End of Current Month (Local)
   const endOfMonthDate = new Date(localNow.getFullYear(), localNow.getMonth() + 1, 0);
-  const endOfMonthStr = new Date(endOfMonthDate.getTime() - endOfMonthDate.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+  const endOfMonthStr = toLocalISODate(endOfMonthDate);
 
   sessions.forEach(s => {
      const rate = s.price || 0;
@@ -359,10 +360,7 @@ export function getRevenueChartData(sessions: TrainingSession[], period: 'week' 
   const defaultRateByType: Record<string, number> = { Private: 350, Semi: 250, Group: 200 };
   
   // Helpers to format Local Date strings safely
-  const toLocalISO = (d: Date) => {
-      const offset = d.getTimezoneOffset() * 60000;
-      return new Date(d.getTime() - offset).toISOString().split('T')[0];
-  };
+  const toLocalISO = (d: Date) => toLocalISODate(d);
 
   const getDayVal = (s: TrainingSession) => {
       const baseRate = (typeof s.price === 'number' && s.price > 0)
@@ -485,7 +483,7 @@ export function getRevenueChartData(sessions: TrainingSession[], period: 'week' 
 export function getHeatmapData(sessions: TrainingSession[]): HeatmapData {
    const heatmap: HeatmapData = {};
    sessions.forEach(s => {
-      const dayName = new Date(s.date).toLocaleDateString('en-US', { weekday: 'long' });
+      const dayName = parseISODateLocal(s.date).toLocaleDateString('en-US', { weekday: 'long' });
       // s.startTime is "14:00". We need "14:00:00" or just key based on hour
       // The component expects "Monday-14:00:00"
       const hour = s.startTime.split(':')[0] + ":00:00"; // Assuming component formats strict
@@ -502,9 +500,9 @@ export function getClientHealth(players: Player[], sessions: TrainingSession[]) 
    return players.map(p => {
       // Find last session for this player
       const playerSessions = sessions.filter(s => s.participantIds.includes(p.id));
-      const lastSession = playerSessions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+      const lastSession = playerSessions.sort((a,b) => parseISODateLocal(b.date).getTime() - parseISODateLocal(a.date).getTime())[0];
       
-      const lastSessionTs = lastSession ? new Date(lastSession.date).getTime() : 0;
+      const lastSessionTs = lastSession ? parseISODateLocal(lastSession.date).getTime() : 0;
       const daysSince = lastSessionTs ? Math.floor((now.getTime() - lastSessionTs) / (1000 * 60 * 60 * 24)) : 999;
       
       const hasSchedule = playerSessions.length > 0;

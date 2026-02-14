@@ -1,7 +1,7 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { cn, nanoid } from '@/lib/utils';
+import { cn, nanoid, parseISODateLocal } from '@/lib/utils';
 import type { Player, TrainingSession, Drill } from '@/lib/playbook';
 import { 
   User, Award, BookOpen, Target, TrendingUp, 
@@ -70,7 +70,7 @@ export function CoachDossier({
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     
     const thisWeekSessions = sessions.filter(s => {
-       const d = new Date(s.date);
+       const d = parseISODateLocal(s.date);
        return d >= startOfWeek && d <= endOfWeek;
     });
     

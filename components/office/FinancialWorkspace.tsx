@@ -6,7 +6,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { cn, nanoid } from '@/lib/utils';
+import { cn, nanoid, toLocalISODate } from '@/lib/utils';
 import type { Client, Player, TrainingSession, DayEvent } from '@/lib/playbook';
 import { useClientFinancials, useFilteredClients, useLedgerEntries } from '@/lib/hooks';
 
@@ -17,11 +17,26 @@ interface FinancialWorkspaceProps {
   dayEvents?: DayEvent[];
   onUpsertClient: (client: Client) => void;
   onEditClient: (client: Client) => void;
+  onUploadFile?: (bucket: string, file: File) => Promise<string | null>;
 }
 
 type SortMode = 'balance-desc' | 'name-asc' | 'fees-desc';
 type LedgerFilter = 'all' | 'charges' | 'credits';
 type DensityMode = 'compact' | 'comfortable';
+
+type ThreadMessage = {
+  id: string;
+  author: 'coach' | 'parent';
+  text: string;
+  createdAt: number;
+};
+
+type MessageMeta = {
+  unreadCount: number;
+  lastAuthor: 'coach' | 'parent' | null;
+  lastCreatedAt: number | null;
+  lastPreview: string;
+};
 
 export function FinancialWorkspace({
   clients,
@@ -30,6 +45,7 @@ export function FinancialWorkspace({
   dayEvents = [],
   onUpsertClient,
   onEditClient,
+  onUploadFile,
 }: FinancialWorkspaceProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,11 +54,15 @@ export function FinancialWorkspace({
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentRef, setPaymentRef] = useState('');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentDate, setPaymentDate] = useState(toLocalISODate(new Date()));
+  const [paymentPlayerId, setPaymentPlayerId] = useState<string>('household');
+  const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
+  const [paymentProofName, setPaymentProofName] = useState('');
   const [showOutstandingOnly, setShowOutstandingOnly] = useState(true);
   const [sortMode, setSortMode] = useState<SortMode>('balance-desc');
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('all');
   const [densityMode, setDensityMode] = useState<DensityMode>('comfortable');
+  const [messageMetaByClient, setMessageMetaByClient] = useState<Record<string, MessageMeta>>({});
   const [leftPaneWidth, setLeftPaneWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return 56;
     const saved = Number(window.localStorage.getItem('tactics-lab-financials-left-pane'));
@@ -83,6 +103,60 @@ export function FinancialWorkspace({
     event.preventDefault();
     setIsResizing(true);
   }, []);
+
+  const refreshMessageMeta = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const next: Record<string, MessageMeta> = {};
+    for (const client of clients) {
+      const threadKey = `tl-client-messages-${client.id}`;
+      const readKey = `tl-client-messages-read-coach-${client.id}`;
+      const raw = window.localStorage.getItem(threadKey);
+      const readAt = Number(window.localStorage.getItem(readKey) || '0');
+      let messages: ThreadMessage[] = [];
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as ThreadMessage[];
+          if (Array.isArray(parsed)) {
+            messages = parsed.filter((m) => m && (m.author === 'coach' || m.author === 'parent') && typeof m.createdAt === 'number');
+          }
+        } catch {
+          messages = [];
+        }
+      }
+      messages.sort((a, b) => b.createdAt - a.createdAt);
+      const last = messages[0];
+      const unreadCount = messages.filter((m) => m.author === 'parent' && m.createdAt > readAt).length;
+      next[client.id] = {
+        unreadCount,
+        lastAuthor: last?.author || null,
+        lastCreatedAt: last?.createdAt || null,
+        lastPreview: (last?.text || '').slice(0, 72)
+      };
+    }
+    setMessageMetaByClient(next);
+  }, [clients]);
+
+  const markCoachThreadRead = useCallback((clientId: string) => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(`tl-client-messages-read-coach-${clientId}`, String(Date.now()));
+    window.dispatchEvent(new Event('tl-messages-updated'));
+  }, []);
+
+  useEffect(() => {
+    refreshMessageMeta();
+  }, [refreshMessageMeta]);
+
+  useEffect(() => {
+    const onUpdated = () => refreshMessageMeta();
+    window.addEventListener('storage', onUpdated);
+    window.addEventListener('tl-messages-updated', onUpdated);
+    const t = window.setInterval(refreshMessageMeta, 10000);
+    return () => {
+      window.removeEventListener('storage', onUpdated);
+      window.removeEventListener('tl-messages-updated', onUpdated);
+      window.clearInterval(t);
+    };
+  }, [refreshMessageMeta]);
 
   const { clients: clientFinancials, totals } = useClientFinancials(
     clients, players, sessions, dayEvents, currentDate
@@ -135,14 +209,29 @@ export function FinancialWorkspace({
       .reduce((sum, e) => sum + Math.abs(e.amount), 0);
   }, [allLedgerEntries]);
 
-  const handleRecordPayment = () => {
+  const handleRecordPayment = async () => {
     if (!selectedClient || !paymentAmount) return;
     const client = selectedClient.client;
+    let proofUrl: string | undefined;
+    if (paymentProofFile) {
+      if (onUploadFile) {
+        proofUrl = (await onUploadFile('session-media', paymentProofFile)) || undefined;
+      } else {
+        proofUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(paymentProofFile);
+        });
+      }
+    }
     const newPayment = {
       id: nanoid(),
       date: paymentDate,
       amount: parseFloat(paymentAmount),
       reference: paymentRef || undefined,
+      playerId: paymentPlayerId !== 'household' ? paymentPlayerId : undefined,
+      proofUrl,
+      proofName: paymentProofName || paymentProofFile?.name || undefined,
     };
     onUpsertClient({
       ...client,
@@ -151,6 +240,9 @@ export function FinancialWorkspace({
     });
     setPaymentAmount('');
     setPaymentRef('');
+    setPaymentPlayerId('household');
+    setPaymentProofFile(null);
+    setPaymentProofName('');
     setIsAddPaymentOpen(false);
   };
 
@@ -272,42 +364,60 @@ export function FinancialWorkspace({
           </div>
           <div className="flex-1 overflow-auto">
             <div className="min-w-[560px] sm:min-w-[640px]">
-              {scopedClients.map((cf) => (
-                <div
-                  key={cf.client.id}
-                  onClick={() => setSelectedClientId(cf.client.id)}
-                  className={cn(
-                    "app-table-row grid grid-cols-[1.8fr_60px_100px_90px_80px] sm:grid-cols-[1.8fr_70px_110px_100px_90px] items-center px-3 sm:px-4 cursor-pointer",
-                    densityMode === 'compact' ? "py-2.5" : "py-3.5",
-                    selectedClientId === cf.client.id && "bg-primary/10"
-                  )}
-                >
-                  <div className="min-w-0">
-                    <div className={cn("font-semibold truncate tracking-tight", densityMode === 'compact' ? "text-xs" : "text-sm")}>{cf.client.name}</div>
-                    <div className="text-[10px] text-muted-foreground/90 flex gap-2 mt-0.5 items-center">
-                      {cf.location && <span className="px-1.5 py-0.5 rounded bg-secondary/55 border border-border/50 uppercase tracking-wide text-muted-foreground/95">{cf.location}</span>}
-                      {cf.client.phone && <span className="truncate flex items-center gap-1"><Phone className="w-2.5 h-2.5" />{cf.client.phone}</span>}
-                      {cf.client.email && <span className="truncate flex items-center gap-1"><Mail className="w-2.5 h-2.5" />{cf.client.email}</span>}
+              {scopedClients.map((cf) => {
+                const meta = messageMetaByClient[cf.client.id];
+                return (
+                  <div
+                    key={cf.client.id}
+                    onClick={() => {
+                      setSelectedClientId(cf.client.id);
+                      markCoachThreadRead(cf.client.id);
+                    }}
+                    className={cn(
+                      "app-table-row grid grid-cols-[1.8fr_60px_100px_90px_80px] sm:grid-cols-[1.8fr_70px_110px_100px_90px] items-center px-3 sm:px-4 cursor-pointer",
+                      densityMode === 'compact' ? "py-2.5" : "py-3.5",
+                      selectedClientId === cf.client.id && "bg-primary/10"
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={cn("font-semibold truncate tracking-tight", densityMode === 'compact' ? "text-xs" : "text-sm")}>{cf.client.name}</div>
+                        {(meta?.unreadCount || 0) > 0 && (
+                          <span className="shrink-0 rounded-full bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 font-black">
+                            {meta.unreadCount} new
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground/90 flex gap-2 mt-0.5 items-center">
+                        {cf.location && <span className="px-1.5 py-0.5 rounded bg-secondary/55 border border-border/50 uppercase tracking-wide text-muted-foreground/95">{cf.location}</span>}
+                        {cf.client.phone && <span className="truncate flex items-center gap-1"><Phone className="w-2.5 h-2.5" />{cf.client.phone}</span>}
+                        {cf.client.email && <span className="truncate flex items-center gap-1"><Mail className="w-2.5 h-2.5" />{cf.client.email}</span>}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground/90 mt-0.5 truncate">
+                        {meta?.lastAuthor
+                          ? `Last message: ${meta.lastAuthor === 'parent' ? 'Parent' : 'Coach'}${meta.lastPreview ? ` - ${meta.lastPreview}` : ''}`
+                          : 'No messages yet'}
+                      </div>
+                    </div>
+                    <div className="text-center text-xs font-mono text-muted-foreground">{cf.playerCount}</div>
+                    <div className="text-right font-mono text-xs text-amber-500">R {cf.monthlyFees.toLocaleString()}</div>
+                    <div className={cn(
+                      "text-right font-mono text-xs font-bold",
+                      cf.closingBalance > 0 ? "text-red-500" : "text-emerald-500"
+                    )}>
+                      R {cf.closingBalance.toLocaleString()}
+                    </div>
+                    <div className="flex items-center justify-center gap-1">
+                      <Button variant="ghost" size="icon" className="tap-target-icon h-9 w-9 sm:h-7 sm:w-7" onClick={(e) => { e.stopPropagation(); markCoachThreadRead(cf.client.id); onEditClient(cf.client); }}>
+                        <Edit3 className="w-3 h-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="tap-target-icon h-9 w-9 sm:h-7 sm:w-7 text-primary hover:text-primary" onClick={(e) => { e.stopPropagation(); setSelectedClientId(cf.client.id); setIsAddPaymentOpen(true); }}>
+                        <CreditCard className="w-3 h-3" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="text-center text-xs font-mono text-muted-foreground">{cf.playerCount}</div>
-                  <div className="text-right font-mono text-xs text-amber-500">R {cf.monthlyFees.toLocaleString()}</div>
-                  <div className={cn(
-                    "text-right font-mono text-xs font-bold",
-                    cf.closingBalance > 0 ? "text-red-500" : "text-emerald-500"
-                  )}>
-                    R {cf.closingBalance.toLocaleString()}
-                  </div>
-                  <div className="flex items-center justify-center gap-1">
-                    <Button variant="ghost" size="icon" className="tap-target-icon h-9 w-9 sm:h-7 sm:w-7" onClick={(e) => { e.stopPropagation(); onEditClient(cf.client); }}>
-                      <Edit3 className="w-3 h-3" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="tap-target-icon h-9 w-9 sm:h-7 sm:w-7 text-primary hover:text-primary" onClick={(e) => { e.stopPropagation(); setSelectedClientId(cf.client.id); setIsAddPaymentOpen(true); }}>
-                      <CreditCard className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
 
               {scopedClients.length === 0 && (
                 <div className="py-12 text-center text-muted-foreground italic text-sm">
@@ -404,16 +514,25 @@ export function FinancialWorkspace({
               <div className="app-card p-5 rounded-xl">
                 <h3 className="app-heading-md mb-3">Top Outstanding Balances</h3>
                 <div className="space-y-2">
-                  {topOverdue.map((item) => (
+                  {topOverdue.map((item) => {
+                    const meta = messageMetaByClient[item.client.id];
+                    return (
                     <button
                       key={item.client.id}
                       className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-card transition-colors text-left app-card-hover"
-                      onClick={() => setSelectedClientId(item.client.id)}
+                      onClick={() => {
+                        setSelectedClientId(item.client.id);
+                        markCoachThreadRead(item.client.id);
+                      }}
                     >
-                      <div className="text-xs font-medium truncate text-foreground/95">{item.client.name}</div>
+                      <div className="text-xs font-medium truncate text-foreground/95 flex items-center gap-1.5">
+                        {item.client.name}
+                        {(meta?.unreadCount || 0) > 0 && <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" />}
+                      </div>
                       <div className="text-xs font-mono font-bold text-red-500">R {item.closingBalance.toLocaleString()}</div>
                     </button>
-                  ))}
+                    );
+                  })}
                   {topOverdue.length === 0 && (
                     <div className="text-xs text-muted-foreground italic">No outstanding balances this month.</div>
                   )}
@@ -467,6 +586,25 @@ export function FinancialWorkspace({
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Reference (Optional)</label>
                 <Input placeholder="e.g., EFT Term 1, Cash" value={paymentRef} onChange={e => setPaymentRef(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Allocate To</label>
+                <Select value={paymentPlayerId} onValueChange={setPaymentPlayerId}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="household">Household (All Kids)</SelectItem>
+                    {players.filter(p => p.clientId === selectedClient.client.id).map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Proof Of Payment (Optional)</label>
+                <Input type="file" accept="image/*,.pdf" onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)} className="h-10" />
+                <Input placeholder="Proof label (optional)" value={paymentProofName} onChange={e => setPaymentProofName(e.target.value)} />
               </div>
             </div>
             <div className="p-5 border-t border-border flex justify-end gap-2">

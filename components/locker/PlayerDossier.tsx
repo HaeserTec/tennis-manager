@@ -1,8 +1,8 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { cn, nanoid } from '@/lib/utils';
+import { cn, nanoid, toLocalISODate } from '@/lib/utils';
 import type { Player, PlayerStats, Drill, Client, TrainingSession, DayEvent, SessionObservation } from '@/lib/playbook';
 import { RadarChart } from '@/components/RadarChart';
 import { ClientEditPanel } from '@/components/ClientEditPanel';
@@ -37,6 +37,7 @@ const AVATAR_COLORS = [
 ];
 
 const DAY_OPTIONS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+const getLocalISODate = (date: Date) => toLocalISODate(date);
 
 export function PlayerDossier({
   player,
@@ -64,8 +65,16 @@ export function PlayerDossier({
   const [newScheduleEndTime, setNewScheduleEndTime] = useState<string>('17:00');
   const [newScheduleType, setNewScheduleType] = useState<'Private' | 'Semi' | 'Group'>('Private');
   const [newScheduleLocation, setNewScheduleLocation] = useState<string>('');
+  const [linkClientId, setLinkClientId] = useState<string>(player.clientId || 'none');
+  const [quickParentName, setQuickParentName] = useState('');
+  const [quickParentPhone, setQuickParentPhone] = useState('');
 
   const linkedClient = clients?.find((c: Client) => c.id === player.clientId);
+  const selectedLinkClient = clients?.find((c: Client) => c.id === linkClientId);
+  const safeLinkClientId = useMemo(() => {
+    if (linkClientId === 'none') return 'none';
+    return clients.some((c: Client) => c.id === linkClientId) ? linkClientId : 'none';
+  }, [clients, linkClientId]);
   const assignedDrillsData = drills.filter((d: Drill) => player.assignedDrills.includes(d.id));
 
   // Calculate age from DOB
@@ -76,7 +85,7 @@ export function PlayerDossier({
   const attendanceByDate = useMemo(() => {
     const counts = new Map<string, number>();
     attendance.forEach((ts) => {
-      const key = new Date(ts).toISOString().split('T')[0];
+      const key = getLocalISODate(new Date(ts));
       counts.set(key, (counts.get(key) || 0) + 1);
     });
     return counts;
@@ -110,7 +119,7 @@ export function PlayerDossier({
 
     for (let cursor = new Date(start); cursor < today; cursor.setDate(cursor.getDate() + 1)) {
       const day = DAY_OPTIONS[cursor.getDay()];
-      const dateKey = cursor.toISOString().split('T')[0];
+      const dateKey = getLocalISODate(cursor);
       const matches = schedule.filter((slot) => slot.day === day);
       matches.forEach((slot) => {
         const slotId = slot.id || `${slot.day}-${slot.startTime}-${slot.endTime}-${slot.location}`;
@@ -205,7 +214,7 @@ export function PlayerDossier({
     if (!newNote.trim()) return;
     const note = {
       id: nanoid(),
-      date: new Date().toISOString().split('T')[0],
+      date: toLocalISODate(new Date()),
       content: newNote,
     };
     const journal = player.journal || [];
@@ -239,14 +248,90 @@ export function PlayerDossier({
   const handleToggleScheduledAttendance = (dateKey: string, shouldAttend: boolean) => {
     const nextAttendance = [...attendance];
     if (shouldAttend) {
-      const existingCount = nextAttendance.filter((ts) => new Date(ts).toISOString().startsWith(dateKey)).length;
-      const ts = new Date(`${dateKey}T12:00:00.000Z`).getTime() + existingCount;
+      const existingCount = nextAttendance.filter((ts) => getLocalISODate(new Date(ts)) === dateKey).length;
+      const ts = new Date(`${dateKey}T12:00:00`).getTime() + existingCount;
       nextAttendance.push(ts);
     } else {
-      const idx = nextAttendance.findIndex((ts) => new Date(ts).toISOString().startsWith(dateKey));
+      const idx = nextAttendance.findIndex((ts) => getLocalISODate(new Date(ts)) === dateKey);
       if (idx >= 0) nextAttendance.splice(idx, 1);
     }
     onUpdate({ ...player, attendance: nextAttendance, updatedAt: Date.now() });
+  };
+
+  useEffect(() => {
+    if (!player.clientId) {
+      setLinkClientId('none');
+      return;
+    }
+    const exists = clients.some((c: Client) => c.id === player.clientId);
+    setLinkClientId(exists ? player.clientId : 'none');
+  }, [clients, player.clientId, player.id]);
+
+  const handleLinkExistingClient = () => {
+    if (linkClientId === 'none') return;
+    const target = clients.find((c: Client) => c.id === linkClientId);
+    if (!target) return;
+    onUpdate({
+      ...player,
+      clientId: target.id,
+      intel: {
+        ...(player.intel || {}),
+        parentContact: target.phone || player.intel?.parentContact
+      },
+      updatedAt: Date.now()
+    });
+  };
+
+  const handleUnlinkClient = () => {
+    onUpdate({
+      ...player,
+      clientId: undefined,
+      updatedAt: Date.now()
+    });
+    setLinkClientId('none');
+  };
+
+  const handleCreateAndLinkClient = () => {
+    if (!quickParentName.trim() || !onUpsertClient) return;
+    const existing = clients.find((c: Client) => c.name.toLowerCase().trim() === quickParentName.toLowerCase().trim());
+    if (existing) {
+      setLinkClientId(existing.id);
+      onUpdate({
+        ...player,
+        clientId: existing.id,
+        intel: {
+          ...(player.intel || {}),
+          parentContact: existing.phone || quickParentPhone || player.intel?.parentContact
+        },
+        updatedAt: Date.now()
+      });
+      setQuickParentName('');
+      setQuickParentPhone('');
+      return;
+    }
+    const newClient: Client = {
+      id: nanoid(),
+      name: quickParentName.trim(),
+      email: '',
+      phone: quickParentPhone.trim(),
+      status: 'Active',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      payments: []
+    };
+    onUpsertClient(newClient);
+    onUpdate({
+      ...player,
+      clientId: newClient.id,
+      intel: {
+        ...(player.intel || {}),
+        parentContact: newClient.phone || player.intel?.parentContact
+      },
+      updatedAt: Date.now()
+    });
+    setLinkClientId(newClient.id);
+    setQuickParentName('');
+    setQuickParentPhone('');
   };
 
   return (
@@ -408,10 +493,55 @@ export function PlayerDossier({
                       </Button>
                     </div>
                   ) : (
-                    <div className="text-sm text-muted-foreground">
-                      No parent linked. Link from the client accounts.
+                    <div className="p-3 rounded-lg bg-card/40 border border-border text-sm text-muted-foreground">
+                      No parent linked yet. You can link one below.
                     </div>
                   )}
+
+                  <div className="p-3 rounded-lg bg-card/40 border border-border space-y-2.5">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Link Parent Account</div>
+                    <div className="flex gap-2">
+                      <Select value={safeLinkClientId} onValueChange={setLinkClientId}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Select existing parent account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No Link</SelectItem>
+                          {clients.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button size="sm" className="h-9" onClick={handleLinkExistingClient} disabled={linkClientId === 'none' || (selectedLinkClient?.id === linkedClient?.id)}>
+                        {linkedClient ? 'Re-Link' : 'Link'}
+                      </Button>
+                    </div>
+                    {linkedClient && (
+                      <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleUnlinkClient}>
+                        Unlink Parent
+                      </Button>
+                    )}
+                    {onUpsertClient && (
+                      <div className="pt-2 border-t border-border/70 space-y-2">
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Or Create New Parent</div>
+                        <Input
+                          value={quickParentName}
+                          onChange={(e) => setQuickParentName(e.target.value)}
+                          placeholder="Parent Name"
+                          className="h-9"
+                        />
+                        <Input
+                          value={quickParentPhone}
+                          onChange={(e) => setQuickParentPhone(e.target.value)}
+                          placeholder="Phone (optional)"
+                          className="h-9"
+                        />
+                        <Button size="sm" className="h-9 w-full" onClick={handleCreateAndLinkClient} disabled={!quickParentName.trim()}>
+                          Create & Link Parent
+                        </Button>
+                      </div>
+                    )}
+                  </div>
 
                   <Field label="School">
                     <Input 

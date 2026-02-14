@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { X, Trash2, Users, CreditCard, AlertTriangle, Printer } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Trash2, Users, CreditCard, AlertTriangle, Printer, Send, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+import { cn, toLocalISODate } from '@/lib/utils';
 import type { Client, Player, Payment, TrainingSession, DayEvent } from '@/lib/playbook';
 import { ClientStatementDocument } from './ClientStatementDocument';
 
@@ -19,6 +19,13 @@ interface ClientEditPanelProps {
   onDelete: (clientId: string) => void;
   onMerge: (sourceId: string, targetId: string) => void;
 }
+
+type MessageItem = {
+  id: string;
+  author: 'coach' | 'parent';
+  text: string;
+  createdAt: number;
+};
 
 // South African phone validation
 const SA_PHONE_REGEX = /^(\+27|0)[0-9]{9}$/;
@@ -77,6 +84,9 @@ export function ClientEditPanel({
   const [duplicates, setDuplicates] = useState<Client[]>([]);
   const [showMergeDialog, setShowMergeDialog] = useState(false);
   const [showStatement, setShowStatement] = useState(false);
+  const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [messageDraft, setMessageDraft] = useState('');
+  const messageStorageKey = useMemo(() => `tl-client-messages-${client.id}`, [client.id]);
 
   // Linked players
   const linkedPlayers = players.filter(p => p.clientId === client.id);
@@ -95,6 +105,35 @@ export function ClientEditPanel({
     setShowDeleteConfirm(false);
     setDuplicates([]);
   }, [client]);
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem(messageStorageKey);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as MessageItem[];
+        if (Array.isArray(parsed)) {
+          setMessages(parsed.filter((m) => m && (m.author === 'coach' || m.author === 'parent') && typeof m.text === 'string'));
+        } else {
+          setMessages([]);
+        }
+      } catch {
+        setMessages([]);
+      }
+    } else {
+      setMessages([]);
+    }
+  }, [messageStorageKey]);
+
+  useEffect(() => {
+    window.localStorage.setItem(messageStorageKey, JSON.stringify(messages));
+    window.dispatchEvent(new Event('tl-messages-updated'));
+  }, [messageStorageKey, messages]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    window.localStorage.setItem(`tl-client-messages-read-coach-${client.id}`, String(Date.now()));
+    window.dispatchEvent(new Event('tl-messages-updated'));
+  }, [client.id, isOpen]);
 
   // Mark dirty on any change
   useEffect(() => {
@@ -164,6 +203,19 @@ export function ClientEditPanel({
     } else {
       alert('No duplicates found.');
     }
+  }
+
+  function sendCoachMessage(): void {
+    const text = messageDraft.trim();
+    if (!text) return;
+    const msg: MessageItem = {
+      id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      author: 'coach',
+      text,
+      createdAt: Date.now()
+    };
+    setMessages(prev => [msg, ...prev]);
+    setMessageDraft('');
   }
 
   if (!isOpen) return null;
@@ -347,6 +399,56 @@ export function ClientEditPanel({
             </h3>
             <PaymentEditor payments={payments} onChange={setPayments} />
           </section>
+
+          {/* Messaging Section */}
+          <section className="space-y-3">
+            <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <MessageSquare className="w-4 h-4" />
+              Client Messaging
+            </h3>
+
+            <div className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar pr-1">
+              {messages.length > 0 ? (
+                [...messages]
+                  .sort((a, b) => b.createdAt - a.createdAt)
+                  .slice(0, 12)
+                  .map((m) => (
+                    <div
+                      key={m.id}
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-sm",
+                        m.author === 'coach' ? "border-primary/30 bg-primary/10" : "border-border bg-card/40"
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={cn("text-[10px] font-black uppercase tracking-widest", m.author === 'coach' ? "text-primary" : "text-muted-foreground")}>
+                          {m.author === 'coach' ? 'Coach' : 'Parent'}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {new Date(m.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p>{m.text}</p>
+                    </div>
+                  ))
+              ) : (
+                <p className="text-sm text-muted-foreground italic">No messages yet.</p>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <Input
+                value={messageDraft}
+                onChange={(e) => setMessageDraft(e.target.value)}
+                placeholder="Write update to parent..."
+                className="h-9"
+              />
+              <Button size="sm" className="h-9" onClick={sendCoachMessage}>
+                <Send className="w-3.5 h-3.5 mr-1.5" />
+                Send
+              </Button>
+            </div>
+          </section>
         </div>
 
         {/* Footer */}
@@ -478,7 +580,7 @@ function PaymentForm({
   onCancel: () => void,
   key?: any
 }): React.ReactElement {
-  const [date, setDate] = useState(payment?.date || new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(payment?.date || toLocalISODate(new Date()));
   const [amount, setAmount] = useState(payment?.amount?.toString() || '');
   const [reference, setReference] = useState(payment?.reference || '');
   const [note, setNote] = useState(payment?.note || '');

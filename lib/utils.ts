@@ -64,6 +64,18 @@ export function arrayMove<T>(arr: T[], from: number, to: number) {
 
 export const nowMs = () => Date.now();
 
+export function toLocalISODate(date: Date) {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().split("T")[0];
+}
+
+export function parseISODateLocal(dateStr: string) {
+  if (!dateStr) return new Date(NaN);
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(dateStr);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0);
+  return new Date(dateStr);
+}
+
 export function getPointDistance(p1: { x: number; y: number }, p2: { x: number; y: number }) {
   const dx = p1.x - p2.x;
   const dy = p1.y - p2.y;

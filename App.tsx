@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Drill, SessionType, Format, Intensity, Sequence, SessionPlan, DrillTemplate, Player } from '@/lib/playbook';
-import { cn, nanoid, nowMs, downloadTextFile, safeJsonParse } from '@/lib/utils';
+import { cn, nanoid, nowMs, downloadTextFile, safeJsonParse, toLocalISODate } from '@/lib/utils';
 import { SessionBuilder } from '@/components/SessionBuilder';
 import { HomeDashboard } from '@/components/HomeDashboard';
 import { DrillThumbnail } from '@/components/DrillThumbnail';
@@ -127,11 +127,6 @@ const DEFAULT_COACH_PROFILE: CoachProfile = {
     shoes: '',
     lastRestrung: ''
   }
-};
-
-const getLocalISODate = (date: Date) => {
-  const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().split('T')[0];
 };
 
 export default function App() {
@@ -782,11 +777,11 @@ export default function App() {
       drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms,
       meta: { date: new Date().toISOString(), version: '1.0' }
     };
-    downloadTextFile(`vgta-backup-${new Date().toISOString().split('T')[0]}.json`, JSON.stringify(backup, null, 2));
+    downloadTextFile(`vgta-backup-${toLocalISODate(new Date())}.json`, JSON.stringify(backup, null, 2));
   }, [drills, templates, sequences, plans, players, clients, sessions, locations, logs, terms]);
 
   // Home Dashboard Stats
-  const todayKey = getLocalISODate(new Date());
+  const todayKey = toLocalISODate(new Date());
   const activePlayers = useMemo(
     () => players.filter(p => p.account?.status !== 'Inactive'),
     [players]

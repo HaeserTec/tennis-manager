@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { cn, nanoid } from '@/lib/utils';
+import { cn, nanoid, parseISODateLocal, toLocalISODate } from '@/lib/utils';
 import type { Player, Client, Payment, TrainingSession, SessionType, LocationConfig, DayEvent, DayEventType, Expense, Drill, SessionObservation } from '@/lib/playbook';
 import {
   Check, X, Phone, Search, Calendar as CalendarIcon, Users,
@@ -61,11 +61,7 @@ const SA_HOLIDAYS_2026 = new Set([
    '2026-12-25', '2026-12-26'
 ]);
 
-const getLocalISODate = (date: Date): string => {
-   const offset = date.getTimezoneOffset() * 60000;
-   const localDate = new Date(date.getTime() - offset);
-   return localDate.toISOString().split('T')[0];
-};
+const getLocalISODate = (date: Date): string => toLocalISODate(date);
 
 function useLiveNow(intervalMs = 30000) {
    const [now, setNow] = useState(() => new Date());
@@ -85,6 +81,7 @@ export function AcademyOffice({
   onUpsertSession, onDeleteSession,
   upsertDayEvent, deleteDayEvent,
   upsertExpense, deleteExpense,
+  onUploadFile,
   onClose
 }: AcademyOfficeProps) {
   const [activeTab, setActiveTab] = useState<Tab>('insights');
@@ -148,6 +145,7 @@ export function AcademyOffice({
                dayEvents={dayEvents}
                onUpsertClient={onUpsertClient}
                onEditClient={setEditingClient}
+               onUploadFile={onUploadFile}
             />
          </div>
          <div className={cn("h-full w-full", activeTab !== 'bookings' && "hidden")}>
@@ -203,8 +201,8 @@ function ExpenseTracker({ expenses, upsertExpense, deleteExpense }: { expenses: 
          e.category.toLowerCase().includes(q.toLowerCase())
       );
       return list.sort((a, b) => {
-         const dateA = new Date(a.date).getTime();
-         const dateB = new Date(b.date).getTime();
+         const dateA = parseISODateLocal(a.date).getTime();
+         const dateB = parseISODateLocal(b.date).getTime();
          return sortDesc ? dateB - dateA : dateA - dateB;
       });
    }, [expenses, q, sortDesc]);

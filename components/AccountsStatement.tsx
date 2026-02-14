@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Search, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { cn, parseISODateLocal } from '@/lib/utils';
 import type { Client, Player, TrainingSession, Payment, DayEvent } from '@/lib/playbook';
 import { getSessionBillingForClient } from '@/lib/billing';
 
@@ -35,7 +35,7 @@ export function AccountsStatement({ clients, players, sessions, dayEvents = [] }
 
        // Past Sessions
        sessions.forEach(s => {
-          const sDate = new Date(s.date);
+          const sDate = parseISODateLocal(s.date);
           if (sDate < currentMonthStart && s.participantIds.some(pid => clientPlayerIds.has(pid))) {
              const billing = getSessionBillingForClient(s, clientPlayerIds, dayEvents);
              openingFees += billing.charge;
@@ -45,7 +45,7 @@ export function AccountsStatement({ clients, players, sessions, dayEvents = [] }
 
        // Past Payments
        (client.payments || []).forEach(p => {
-          const pDate = new Date(p.date);
+          const pDate = parseISODateLocal(p.date);
           if (pDate < currentMonthStart) {
              openingPayments += p.amount;
           }
@@ -55,7 +55,7 @@ export function AccountsStatement({ clients, players, sessions, dayEvents = [] }
 
        // 2. Sessions in this month
        const monthlySessions = sessions.filter(s => {
-          const sDate = new Date(s.date);
+          const sDate = parseISODateLocal(s.date);
           return sDate >= currentMonthStart && sDate < nextMonthStart && s.participantIds.some(pid => clientPlayerIds.has(pid));
        });
 
@@ -72,7 +72,7 @@ export function AccountsStatement({ clients, players, sessions, dayEvents = [] }
 
        // 3. Payments in this month
        const monthlyPayments = (client.payments || []).filter(p => {
-          const pDate = new Date(p.date);
+          const pDate = parseISODateLocal(p.date);
           return pDate >= currentMonthStart && pDate < nextMonthStart;
        });
        

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { cn, nanoid, nowMs } from '@/lib/utils';
+import { cn, nanoid, nowMs, toLocalISODate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Player, SessionLog, Term, TrainingSession } from '@/lib/playbook';
@@ -44,12 +44,8 @@ const METRIC_DESCRIPTIONS: Record<string, Record<string, string>> = {
 };
 
 export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHome }: ScoreboardProps) {
-  const getLocalISODate = (date: Date) => {
-    const offset = date.getTimezoneOffset() * 60000;
-    return new Date(date.getTime() - offset).toISOString().split('T')[0];
-  };
   const [viewMode, setViewMode] = useState<'daily' | 'leaderboard'>('daily');
-  const [selectedDate, setSelectedDate] = useState<string>(() => getLocalISODate(new Date()));
+  const [selectedDate, setSelectedDate] = useState<string>(() => toLocalISODate(new Date()));
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   
@@ -116,7 +112,7 @@ export function Scoreboard({ players, logs, sessions, onUpsertLog, onNavigateHom
   const handleDateChange = (days: number) => {
     const d = new Date(selectedDate);
     d.setDate(d.getDate() + days);
-    setSelectedDate(getLocalISODate(d));
+    setSelectedDate(toLocalISODate(d));
   };
 
   const handleSort = (key: string) => {
@@ -518,8 +514,31 @@ function LogForm({ player, existingLog, date, allLogs, onSave, onCancel, embedde
             <div className="h-px bg-border/50" />
 
             {/* Anchors */}
-// ... (omitting some lines for space but including in actual call)
-// ...
+            <div className="space-y-3">
+               <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                  <div className="h-1 w-4 bg-amber-500 rounded-full" />
+                  Session Anchors
+               </h3>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <CounterControl
+                     label="Best Rally Streak"
+                     subtitle="Longest controlled rally today"
+                     icon={<Flame className="w-4 h-4 text-amber-400" />}
+                     value={anchors.bestStreak}
+                     onChange={(v) => setAnchors({ ...anchors, bestStreak: Math.max(0, v) })}
+                  />
+                  <CounterControl
+                     label="Serve In (/10)"
+                     subtitle="How many first serves landed"
+                     icon={<Target className="w-4 h-4 text-blue-400" />}
+                     value={anchors.serveIn}
+                     onChange={(v) => setAnchors({ ...anchors, serveIn: Math.max(0, Math.min(10, v)) })}
+                  />
+               </div>
+            </div>
+
+            <div className="h-px bg-border/50" />
+
             {/* Notes */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                <div className="space-y-2">

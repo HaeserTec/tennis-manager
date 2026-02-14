@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { cn, nanoid } from '@/lib/utils';
+import { cn, nanoid, parseISODateLocal, toLocalISODate } from '@/lib/utils';
 import type { Drill, TrainingSession, Player, SessionType } from '@/lib/playbook';
 import { DrillThumbnail } from '@/components/DrillThumbnail';
 import { 
@@ -92,7 +92,7 @@ export function SessionBlueprint({
     e.preventDefault();
     if (!draggedDrill) return;
 
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalISODate(date);
     const [h, m] = timeSlot.split(':').map(Number);
     const endH = h + 1;
     const endTime = `${String(endH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -365,7 +365,7 @@ export function SessionBlueprint({
                     
                     {/* Day Cells */}
                     {weekDates.map((date, dayIndex) => {
-                      const dateStr = date.toISOString().split('T')[0];
+                      const dateStr = toLocalISODate(date);
                       const [h, m] = timeSlot.split(':').map(Number);
                       const endTime = `${String(h + 1).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
                       
@@ -440,7 +440,7 @@ export function SessionBlueprint({
           <div className="flex flex-wrap gap-2">
             {blueprintSessions.map((session) => {
               const sessionDrills = getSessionDrills(session.drillIds);
-              const date = new Date(session.date);
+              const date = parseISODateLocal(session.date);
               const conflicts = getConflicts(session.date, session.startTime, session.endTime, session.tempId);
               
               return (
